@@ -439,6 +439,7 @@ function broadcastGameState() {
             w: p.weapon || 'pistol',         // Current weapon
             v: p.alive ? 1 : 0,
             c: p.color,
+            ch: p.character || 'claude',     // Player's character
             k: p.kills || 0
         });
         if (p.alive) aliveCount++;
@@ -754,6 +755,10 @@ wss.on('connection', (ws) => {
 
             switch (msg.t) {
                 case 'j': // join
+                    // Validate character choice (must be one of the valid options)
+                    const validCharacters = ['claude', 'claude-color', 'claude-alt', 'claude-color-alt'];
+                    const chosenCharacter = validCharacters.includes(msg.ch) ? msg.ch : 'claude';
+
                     const player = {
                         id: odplayerId,
                         sessionId: sessionId,
@@ -767,6 +772,7 @@ wss.on('connection', (ws) => {
                         lastShot: 0,       // Timestamp of last shot
                         alive: gameState.phase === 'waiting' || gameState.phase === 'starting',
                         color: PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)],
+                        character: chosenCharacter,  // Player's selected character
                         kills: 0,
                         ws: ws
                     };
@@ -793,6 +799,7 @@ wss.on('connection', (ws) => {
                             w: player.weapon,
                             v: player.alive ? 1 : 0,
                             c: player.color,
+                            ch: player.character,
                             sp: player.spectator || false
                         },
                         lb: getLeaderboardData(),

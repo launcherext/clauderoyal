@@ -345,6 +345,76 @@ body::before {
     font-weight: 400;
 }
 
+/* Character Selection */
+#characterSelect {
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.character-label {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 500;
+}
+
+.character-options {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.character-option {
+    width: 80px;
+    padding: 12px 8px;
+    background: rgba(40, 36, 32, 0.8);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.character-option img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.character-option span {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    font-weight: 500;
+}
+
+.character-option:hover {
+    border-color: rgba(218, 119, 86, 0.5);
+    background: rgba(50, 46, 42, 0.9);
+    transform: translateY(-2px);
+}
+
+.character-option.selected {
+    border-color: var(--primary);
+    background: rgba(218, 119, 86, 0.15);
+    box-shadow: 0 0 20px rgba(218, 119, 86, 0.2);
+}
+
+.character-option.selected img {
+    box-shadow: 0 0 12px rgba(218, 119, 86, 0.4);
+}
+
+.character-option.selected span {
+    color: var(--primary);
+}
+
 #joinBtn {
     padding: 14px 48px;
     font-size: 1rem;

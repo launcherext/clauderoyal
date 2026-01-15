@@ -57,7 +57,7 @@ const RECONCILIATION_THRESHOLD = 50; // Snap if server diff > this
 // ASSET LOADING
 // ============================================================================
 let assetsLoaded = 0;
-const totalAssets = 4;
+const totalAssets = 8; // 4 base assets + 4 character images
 const loadingBar = document.getElementById('loadingBar');
 const loadingText = document.getElementById('loadingText');
 const loadingScreen = document.getElementById('loadingScreen');
@@ -76,6 +76,38 @@ function assetLoaded(name) {
     }
 }
 
+// ============================================================================
+// CHARACTER IMAGES - Load all 4 character options
+// ============================================================================
+const characterImages = {
+    'claude': new Image(),
+    'claude-color': new Image(),
+    'claude-alt': new Image(),
+    'claude-color-alt': new Image()
+};
+
+// Character image sources
+characterImages['claude'].src = 'claude.png';
+characterImages['claude-color'].src = 'claude-color.png';
+characterImages['claude-alt'].src = 'claude (1).png';
+characterImages['claude-color-alt'].src = 'claude-color (1).png';
+
+// Track loading state for each character
+const characterImagesLoaded = {};
+Object.keys(characterImages).forEach(key => {
+    characterImagesLoaded[key] = false;
+    characterImages[key].onload = () => {
+        characterImagesLoaded[key] = true;
+        assetLoaded(`character: ${key}`);
+    };
+    characterImages[key].onerror = () => {
+        assetLoaded(`character: ${key} (fallback)`);
+    };
+});
+
+// Track selected character (default to claude)
+let selectedCharacter = 'claude';
+
 const arenaFloorImg = new Image();
 arenaFloorImg.src = 'arena-floor.png';
 let arenaPattern = null;
@@ -84,42 +116,6 @@ arenaFloorImg.onload = () => {
     assetLoaded('arena floor');
 };
 arenaFloorImg.onerror = () => assetLoaded('arena floor (fallback)');
-
-const playerSkinImg = new Image();
-playerSkinImg.src = 'player-skin.png';
-let playerSkinLoaded = false;
-playerSkinImg.onload = () => {
-    playerSkinLoaded = true;
-    assetLoaded('player skin');
-};
-playerSkinImg.onerror = () => assetLoaded('player skin (fallback)');
-
-// Character sprite sheet
-const characterSprites = new Image();
-characterSprites.src = 'character-sprites.png';
-let characterSpritesLoaded = false;
-characterSprites.onload = () => {
-    characterSpritesLoaded = true;
-};
-characterSprites.onerror = () => console.log('Character sprites fallback');
-
-// Sprite animation config (16x16 sprites)
-const SPRITE_FRAME_SIZE = 16;
-const SPRITE_SCALE = 3; // Scale up for visibility
-// Animation rows in the sprite sheet (approximate - adjust based on actual sheet)
-const SPRITE_ROWS = {
-    idleDown: 0,
-    idleRight: 1,
-    idleUp: 2,
-    idleLeft: 3,
-    walkDown: 4,
-    walkRight: 5,
-    walkUp: 6,
-    walkLeft: 7
-};
-const FRAMES_PER_ROW = 10;
-let animationFrame = 0;
-setInterval(() => { animationFrame = (animationFrame + 1) % FRAMES_PER_ROW; }, 100);
 
 const menuBg = new Image();
 menuBg.src = 'menu-bg.png';
@@ -158,10 +154,10 @@ function createGlowCanvas(radius, color, intensity = 1) {
     return glowCanvas;
 }
 
-// Pre-create common glows
-const bulletGlow = createGlowCanvas(15, 'rgb(255, 255, 0)');
-const playerHighlightGlow = createGlowCanvas(40, 'rgb(0, 255, 255)');
-const arenaGlow = createGlowCanvas(30, 'rgb(224, 122, 95)');
+// Pre-create common glows - Claude theme
+const bulletGlow = createGlowCanvas(15, 'rgb(218, 119, 86)');
+const playerHighlightGlow = createGlowCanvas(40, 'rgb(218, 119, 86)');
+const arenaGlow = createGlowCanvas(30, 'rgb(218, 119, 86)');
 
 // ============================================================================
 // PARTICLE SYSTEM (Object Pool)
@@ -300,6 +296,7 @@ function getInterpolatedState(id, renderTime) {
         name: before.name,
         color: before.color,
         kills: before.kills,
+        character: before.character,
         id: id
     };
 }
@@ -412,13 +409,13 @@ let localPlayer = {
 // Weapon definitions (sent from server)
 let WEAPONS = {};
 
-// Loot type colors/icons
+// Loot type colors/icons - Claude theme
 const LOOT_COLORS = {
-    health: '#2ecc71',
-    shield: '#3498db',
-    shotgun: '#ff6b4a',
-    smg: '#00e5ff',
-    sniper: '#b388ff'
+    health: '#7bc47f',
+    shield: '#6b9bd1',
+    shotgun: '#da7756',
+    smg: '#e8a87c',
+    sniper: '#c4a07a'
 };
 
 // ============================================================================
@@ -443,7 +440,7 @@ function addDamageNumber(x, y, damage, isShield = false) {
         damage,
         time: Date.now(),
         vy: -2,
-        color: isShield ? '#3498db' : '#ff3d5a'
+        color: isShield ? '#6b9bd1' : '#e85c5c'
     });
 }
 
@@ -487,7 +484,7 @@ function connect() {
 
     ws.onopen = () => {
         console.log('Connected to Drop Zone');
-        ws.send(JSON.stringify({ t: 'j', n: playerName }));
+        ws.send(JSON.stringify({ t: 'j', n: playerName, ch: selectedCharacter }));
     };
 
     ws.onmessage = (event) => {
@@ -514,6 +511,7 @@ function handleMessage(data) {
                 weapon: data.p.w || 'pistol',
                 alive: data.p.v === 1,
                 color: data.p.c,
+                character: data.p.ch || selectedCharacter,
                 kills: 0
             };
             isSpectator = data.p.sp || false;
@@ -565,7 +563,8 @@ function handleMessage(data) {
                         alive: p.v === 1,
                         color: p.c,
                         name: p.n,
-                        kills: p.k
+                        kills: p.k,
+                        character: p.ch || 'claude'
                     });
                 }
             }
@@ -605,9 +604,9 @@ function handleMessage(data) {
                 timerEl.style.display = 'block';
                 // Flash red when low time
                 if (data.tr <= 15) {
-                    timerEl.style.color = '#ff3d5a';
+                    timerEl.style.color = '#e85c5c';
                 } else {
-                    timerEl.style.color = '#00e5ff';
+                    timerEl.style.color = '#da7756';
                 }
             } else {
                 timerEl.style.display = 'none';
@@ -658,7 +657,7 @@ function handleMessage(data) {
             // Death particles
             const victim = gameState.players.find(p => p.i === data.vi);
             if (victim) {
-                particlePool.spawnBurst(victim.x, victim.y, 20, 5, 1000, 8, '#ff4444');
+                particlePool.spawnBurst(victim.x, victim.y, 20, 5, 1000, 8, '#da7756');
             }
             break;
 
@@ -711,7 +710,7 @@ function handleMessage(data) {
                 addDamageNumber(data.x, data.y - 40, data.d);
             }
             // Spawn hit particles
-            particlePool.spawnBurst(data.x, data.y, 6, 3, 300, 4, '#ff6b4a');
+            particlePool.spawnBurst(data.x, data.y, 6, 3, 300, 4, '#da7756');
             break;
 
         case 'lp': // Loot pickup
@@ -828,8 +827,8 @@ function updateLobby(nextRoundIn, lobbyPlayers, phase, playerCount, aliveCount) 
         const playerList = gameState.players.slice(0, 15).map(p => {
             const isAlive = p.v === 1;
             const isMe = p.i === playerId;
-            const dotColor = isAlive ? '#2ecc71' : '#666';
-            const nameColor = isMe ? '#00e5ff' : (isAlive ? '#fff' : '#888');
+            const dotColor = isAlive ? '#7bc47f' : '#555';
+            const nameColor = isMe ? '#da7756' : (isAlive ? '#ece5dd' : '#666');
             const fontWeight = isMe ? 'bold' : 'normal';
             return `<div class="lobby-player" style="color: ${nameColor}; font-weight: ${fontWeight};"><span style="color: ${dotColor};">●</span> ${escapeHtml(p.n)}${isMe ? ' (you)' : ''}</div>`;
         }).join('');
@@ -1003,7 +1002,7 @@ document.addEventListener('click', (e) => {
         // Muzzle flash particles
         const muzzleX = localPlayer.x + Math.cos(localPlayer.angle) * 30;
         const muzzleY = localPlayer.y + Math.sin(localPlayer.angle) * 30;
-        particlePool.spawnBurst(muzzleX, muzzleY, 8, 3, 200, 4, '#ffff00');
+        particlePool.spawnBurst(muzzleX, muzzleY, 8, 3, 200, 4, '#e8a87c');
     }
 });
 
@@ -1124,7 +1123,7 @@ function drawArena() {
     const arenaRadius = gameState.arenaSize / 2;
 
     // 1. Draw storm void OUTSIDE the circle (semi-transparent to show background)
-    ctx.fillStyle = 'rgba(6, 6, 13, 0.7)';
+    ctx.fillStyle = 'rgba(16, 14, 12, 0.8)';
     ctx.beginPath();
     ctx.rect(-camera.x, -camera.y, ARENA_SIZE, ARENA_SIZE);
     ctx.arc(arenaScreenX, arenaScreenY, arenaRadius, 0, Math.PI * 2, true);
@@ -1136,20 +1135,20 @@ function drawArena() {
     ctx.arc(arenaScreenX, arenaScreenY, arenaRadius, 0, Math.PI * 2);
     ctx.clip();
 
-    // Subtle radial gradient floor (semi-transparent to show background)
+    // Subtle radial gradient floor - warm Claude tones
     const gradient = ctx.createRadialGradient(
         arenaScreenX, arenaScreenY, 0,
         arenaScreenX, arenaScreenY, arenaRadius
     );
-    gradient.addColorStop(0, 'rgba(20, 20, 35, 0.4)');
-    gradient.addColorStop(0.6, 'rgba(12, 12, 24, 0.5)');
-    gradient.addColorStop(1, 'rgba(8, 8, 16, 0.6)');
+    gradient.addColorStop(0, 'rgba(40, 36, 32, 0.5)');
+    gradient.addColorStop(0.6, 'rgba(32, 28, 24, 0.6)');
+    gradient.addColorStop(1, 'rgba(24, 20, 18, 0.7)');
     ctx.fillStyle = gradient;
     ctx.fillRect(arenaScreenX - arenaRadius, arenaScreenY - arenaRadius,
         arenaRadius * 2, arenaRadius * 2);
 
-    // Clean grid overlay (subtle)
-    ctx.strokeStyle = 'rgba(26, 26, 46, 0.5)';
+    // Clean grid overlay (subtle warm tone)
+    ctx.strokeStyle = 'rgba(60, 54, 48, 0.4)';
     ctx.lineWidth = 1;
     const gridSize = 60;
     const startX = Math.floor((arenaScreenX - arenaRadius) / gridSize) * gridSize;
@@ -1170,42 +1169,26 @@ function drawArena() {
 
     ctx.restore();
 
-    // 3. Arena boundary glow
-    ctx.strokeStyle = '#E07A5F';
-    ctx.lineWidth = 6;
+    // 3. Arena boundary - warm coral
+    ctx.strokeStyle = '#da7756';
+    ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.arc(arenaScreenX, arenaScreenY, arenaRadius, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(224, 122, 95, 0.5)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(218, 119, 86, 0.3)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(arenaScreenX, arenaScreenY, arenaRadius - 10, 0, Math.PI * 2);
+    ctx.arc(arenaScreenX, arenaScreenY, arenaRadius - 8, 0, Math.PI * 2);
     ctx.stroke();
 
-    // 4. Storm pulse effect (subtle)
-    const pulse = Math.sin(Date.now() / 800) * 0.08 + 0.15;
-    ctx.fillStyle = `rgba(60, 0, 90, ${pulse})`;
+    // 4. Storm pulse effect (subtle warm tone)
+    const pulse = Math.sin(Date.now() / 1000) * 0.04 + 0.08;
+    ctx.fillStyle = `rgba(80, 50, 30, ${pulse})`;
     ctx.beginPath();
     ctx.rect(-camera.x, -camera.y, ARENA_SIZE, ARENA_SIZE);
     ctx.arc(arenaScreenX, arenaScreenY, arenaRadius, 0, Math.PI * 2, true);
     ctx.fill();
-
-    // 5. Storm lightning (occasional)
-    if (Math.random() < 0.012) {
-        ctx.strokeStyle = `rgba(160, 60, 200, ${Math.random() * 0.4 + 0.2})`;
-        ctx.lineWidth = 2;
-        const angle = Math.random() * Math.PI * 2;
-        const r = arenaRadius + 40;
-        const sx = arenaScreenX + Math.cos(angle) * r;
-        const sy = arenaScreenY + Math.sin(angle) * r;
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        for (let i = 0; i < 3; i++) {
-            ctx.lineTo(sx + (Math.random() - 0.5) * 60, sy + (Math.random() - 0.5) * 60);
-        }
-        ctx.stroke();
-    }
 }
 
 function drawPlayers() {
@@ -1243,11 +1226,13 @@ function drawPlayers() {
 
 function drawPlayer(player, x, y, isLocal) {
     const angle = player.angle || 0;
-    const color = player.color || player.c || '#E07A5F';
+    const color = player.color || player.c || '#da7756';
     const name = player.name || player.n || 'Player';
     const kills = player.kills || player.k || 0;
     const health = player.health || player.h || 100;
-    const radius = 22;
+    const character = player.character || player.ch || 'claude';
+    const radius = 28; // Slightly larger for character sprites
+    const spriteSize = 56; // Size to render the character sprite
 
     ctx.save();
 
@@ -1260,28 +1245,48 @@ function drawPlayer(player, x, y, isLocal) {
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    // Main circle background
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    gradient.addColorStop(0, 'rgba(30, 30, 50, 0.9)');
-    gradient.addColorStop(1, 'rgba(15, 15, 25, 0.95)');
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
+    // Draw character sprite if loaded, otherwise fallback to circle
+    const charImg = characterImages[character];
+    const charLoaded = characterImagesLoaded[character];
 
-    // Colored border ring
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.stroke();
+    if (charImg && charLoaded) {
+        // Draw character sprite centered
+        ctx.drawImage(
+            charImg,
+            x - spriteSize / 2,
+            y - spriteSize / 2,
+            spriteSize,
+            spriteSize
+        );
 
-    // Player initial in center
-    ctx.fillStyle = color;
-    ctx.font = 'bold 18px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(name.charAt(0).toUpperCase(), x, y + 1);
+        // Colored border ring around sprite
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+    } else {
+        // Fallback: colored circle with initial
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+        gradient.addColorStop(0, 'rgba(50, 45, 40, 0.9)');
+        gradient.addColorStop(1, 'rgba(30, 26, 22, 0.95)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.font = 'bold 18px Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(name.charAt(0).toUpperCase(), x, y + 1);
+    }
 
     ctx.restore();
 
@@ -1300,8 +1305,8 @@ function drawPlayer(player, x, y, isLocal) {
     ctx.arc(x + Math.cos(angle) * (radius + 18), y + Math.sin(angle) * (radius + 18), 3, 0, Math.PI * 2);
     ctx.fill();
 
-    // Random color for name based on player name hash
-    const nameColors = ['#ff6b6b', '#4ecdc4', '#ffe66d', '#95e1d3', '#f38181', '#aa96da', '#fcbad3', '#a8d8ea', '#ff9a8b', '#88d8b0', '#c9b1ff', '#ffd93d'];
+    // Warm color palette for names - Claude theme
+    const nameColors = ['#da7756', '#e8a87c', '#c4a07a', '#7bc47f', '#6b9bd1', '#d4a574', '#b8a090', '#e0c4a8', '#c9b8a0', '#a8c4b0', '#d0b090', '#e8d4b8'];
     const nameHash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
     const nameColor = nameColors[nameHash % nameColors.length];
 
@@ -1329,10 +1334,10 @@ function drawPlayer(player, x, y, isLocal) {
     ctx.roundRect(x - barWidth / 2 - 1, barY - 1, barWidth + 2, barHeight + 2, 3);
     ctx.fill();
 
-    // Health fill (out of 150)
-    let healthColor = '#2ecc71';
-    if (health <= 75) healthColor = '#f1c40f';
-    if (health <= 40) healthColor = '#e74c3c';
+    // Health fill (out of 150) - Claude theme
+    let healthColor = '#7bc47f';
+    if (health <= 75) healthColor = '#e8a87c';
+    if (health <= 40) healthColor = '#e85c5c';
 
     const healthPercent = Math.min(1, health / 150);
     ctx.fillStyle = healthColor;
@@ -1349,15 +1354,15 @@ function drawPlayer(player, x, y, isLocal) {
         ctx.fill();
 
         const shieldPercent = Math.min(1, shield / 100);
-        ctx.fillStyle = '#3498db';
+        ctx.fillStyle = '#6b9bd1';
         ctx.beginPath();
         ctx.roundRect(x - barWidth / 2, shieldY, shieldPercent * barWidth, 3, 2);
         ctx.fill();
     }
 
-    // Self highlight (cyan dashed ring)
+    // Self highlight (coral dashed ring)
     if (isLocal) {
-        ctx.strokeStyle = '#00e5ff';
+        ctx.strokeStyle = '#da7756';
         ctx.lineWidth = 2;
         ctx.setLineDash([4, 4]);
         ctx.beginPath();
@@ -1383,7 +1388,7 @@ function drawBullets() {
             x, y
         );
         gradient.addColorStop(0, 'transparent');
-        gradient.addColorStop(1, bullet.c || '#ffff00');
+        gradient.addColorStop(1, bullet.c || '#e8a87c');
 
         ctx.strokeStyle = gradient;
         ctx.lineWidth = 4;
@@ -1398,7 +1403,7 @@ function drawBullets() {
         ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = bullet.c || '#ffff00';
+        ctx.fillStyle = bullet.c || '#e8a87c';
         ctx.beginPath();
         ctx.arc(x, y, 6, 0, Math.PI * 2);
         ctx.fill();
@@ -1522,18 +1527,18 @@ function drawMinimap() {
     const scale = 150 / ARENA_SIZE;
 
     // Background
-    minimapCtx.fillStyle = '#1a1a2e';
+    minimapCtx.fillStyle = '#1e1c1a';
     minimapCtx.fillRect(0, 0, 150, 150);
 
     // Storm zone
-    minimapCtx.fillStyle = 'rgba(80, 0, 120, 0.4)';
+    minimapCtx.fillStyle = 'rgba(80, 50, 30, 0.4)';
     minimapCtx.beginPath();
     minimapCtx.rect(0, 0, 150, 150);
     minimapCtx.arc(75, 75, (gameState.arenaSize / 2) * scale, 0, Math.PI * 2, true);
     minimapCtx.fill();
 
     // Arena boundary
-    minimapCtx.strokeStyle = '#E07A5F';
+    minimapCtx.strokeStyle = '#da7756';
     minimapCtx.lineWidth = 2;
     minimapCtx.beginPath();
     minimapCtx.arc(75, 75, (gameState.arenaSize / 2) * scale, 0, Math.PI * 2);
@@ -1559,12 +1564,12 @@ function drawMinimap() {
         const py = player.y * scale;
 
         if (player.i === playerId) {
-            minimapCtx.fillStyle = '#00ffff';
+            minimapCtx.fillStyle = '#da7756';
             minimapCtx.beginPath();
             minimapCtx.arc(px, py, 5, 0, Math.PI * 2);
             minimapCtx.fill();
         } else {
-            minimapCtx.fillStyle = player.c || '#E07A5F';
+            minimapCtx.fillStyle = player.c || '#da7756';
             minimapCtx.beginPath();
             minimapCtx.arc(px, py, 3, 0, Math.PI * 2);
             minimapCtx.fill();
@@ -1572,7 +1577,7 @@ function drawMinimap() {
     }
 
     // Border
-    minimapCtx.strokeStyle = 'rgba(224, 122, 95, 0.5)';
+    minimapCtx.strokeStyle = 'rgba(218, 119, 86, 0.3)';
     minimapCtx.lineWidth = 2;
     minimapCtx.strokeRect(0, 0, 150, 150);
 }
@@ -1633,6 +1638,20 @@ function gameLoop(currentTime) {
 // ============================================================================
 // EVENT LISTENERS
 // ============================================================================
+// Character selection handling
+document.querySelectorAll('.character-option').forEach(option => {
+    option.addEventListener('click', () => {
+        // Remove selected class from all options
+        document.querySelectorAll('.character-option').forEach(opt => {
+            opt.classList.remove('selected');
+        });
+        // Add selected class to clicked option
+        option.classList.add('selected');
+        // Update selected character
+        selectedCharacter = option.dataset.character;
+    });
+});
+
 document.getElementById('joinBtn').addEventListener('click', () => {
     playerName = document.getElementById('nameInput').value.trim() || 'Anonymous';
     connect();
@@ -1692,7 +1711,7 @@ document.getElementById('claimBtn').addEventListener('click', async () => {
 
         if (result.success) {
             claimBtn.textContent = 'CLAIMED!';
-            claimBtn.style.background = '#2ecc71';
+            claimBtn.style.background = '#7bc47f';
             showClaimSuccess(`Prize queued for payout to ${wallet.slice(0, 4)}...${wallet.slice(-4)}`);
             setTimeout(() => {
                 document.getElementById('walletSection').classList.remove('show');
@@ -1716,7 +1735,7 @@ function showClaimError(message) {
     if (!errorEl) {
         errorEl = document.createElement('div');
         errorEl.className = 'claim-error';
-        errorEl.style.cssText = 'color: #e74c3c; font-size: 12px; margin-top: 8px;';
+        errorEl.style.cssText = 'color: #e85c5c; font-size: 12px; margin-top: 8px;';
         walletSection.appendChild(errorEl);
     }
     errorEl.textContent = message;
@@ -1729,7 +1748,7 @@ function showClaimSuccess(message) {
     if (!successEl) {
         successEl = document.createElement('div');
         successEl.className = 'claim-success';
-        successEl.style.cssText = 'color: #2ecc71; font-size: 12px; margin-top: 8px;';
+        successEl.style.cssText = 'color: #7bc47f; font-size: 12px; margin-top: 8px;';
         walletSection.appendChild(successEl);
     }
     successEl.textContent = message;
