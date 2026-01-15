@@ -639,6 +639,7 @@ function startRound() {
         p.weapon = 'pistol';      // Everyone starts with pistol
         p.lastShot = 0;
         p.kills = 0;
+        p.synced = false;         // Allow re-sync to new spawn position
         const angle = Math.random() * Math.PI * 2;
         const dist = Math.random() * (ARENA_SIZE / 2 - 100);
         p.x = ARENA_SIZE / 2 + Math.cos(angle) * dist;
@@ -816,23 +817,30 @@ wss.on('connection', (ws) => {
                         const newX = Math.max(20, Math.min(ARENA_SIZE - 20, msg.x));
                         const newY = Math.max(20, Math.min(ARENA_SIZE - 20, msg.y));
 
-                        // ANTI-CHEAT: Speed validation with network tolerance
-                        // Max speed is 5 units/frame * ~20 frames for network latency = 100 units
-                        const MAX_MOVE_DIST = 100;
                         const dist = Math.sqrt((newX - p.x) ** 2 + (newY - p.y) ** 2);
 
-                        if (dist <= MAX_MOVE_DIST) {
-                            // Valid movement - accept it
+                        // Allow initial sync (first few moves after join/respawn)
+                        if (!p.synced) {
                             p.x = newX;
                             p.y = newY;
-                        } else {
-                            // TELEPORT ATTEMPT DETECTED - reject entirely, don't interpolate
-                            // Log for monitoring (could add rate limiting/banning here)
-                            console.warn(`[ANTI-CHEAT] ${p.name} attempted teleport: ${dist.toFixed(1)} units`);
-                            // Player stays at current position - client will reconcile
+                            p.synced = true;
+                        }
+                        // ANTI-CHEAT: Speed validation - 5 units/frame * ~30 frames tolerance
+                        else if (dist <= 150) {
+                            p.x = newX;
+                            p.y = newY;
+                        }
+                        // Teleport detected - snap to server position
+                        else {
+                            // Rate limit logging (max 1 per second per player)
+                            const now = Date.now();
+                            if (!p.lastCheatLog || now - p.lastCheatLog > 1000) {
+                                console.warn(`[ANTI-CHEAT] ${p.name} teleport rejected: ${dist.toFixed(0)}u`);
+                                p.lastCheatLog = now;
+                            }
                         }
 
-                        // Angle is always accepted (can't cheat with aim direction)
+                        // Angle is always accepted
                         p.angle = msg.a;
 
                         // Acknowledge input sequence for client prediction
