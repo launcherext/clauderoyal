@@ -1180,75 +1180,97 @@ function drawArena() {
     const center = ARENA_SIZE / 2;
     const arenaScreenX = center - camera.x;
     const arenaScreenY = center - camera.y;
-    const arenaRadius = gameState.arenaSize / 2;
+    const arenaHalfSize = gameState.arenaSize / 2;
+    const cornerRadius = 24; // Rounded corners like Claude chat box
 
-    // 1. Draw storm void OUTSIDE the circle (semi-transparent to show background)
-    ctx.fillStyle = 'rgba(16, 14, 12, 0.8)';
-    ctx.beginPath();
-    ctx.rect(-camera.x, -camera.y, ARENA_SIZE, ARENA_SIZE);
-    ctx.arc(arenaScreenX, arenaScreenY, arenaRadius, 0, Math.PI * 2, true);
-    ctx.fill();
+    // Calculate square bounds
+    const left = arenaScreenX - arenaHalfSize;
+    const top = arenaScreenY - arenaHalfSize;
+    const size = arenaHalfSize * 2;
 
-    // 2. Draw arena floor INSIDE the circle (clipped)
+    // 1. Draw storm void OUTSIDE the square (dark terminal background)
+    ctx.fillStyle = 'rgba(30, 28, 26, 0.95)';
+    ctx.fillRect(-camera.x - 500, -camera.y - 500, ARENA_SIZE + 1000, ARENA_SIZE + 1000);
+
+    // 2. Draw the Claude chat box arena
     ctx.save();
+
+    // Create rounded rectangle path for clipping
     ctx.beginPath();
-    ctx.arc(arenaScreenX, arenaScreenY, arenaRadius, 0, Math.PI * 2);
+    ctx.roundRect(left, top, size, size, cornerRadius);
     ctx.clip();
 
-    // Subtle radial gradient floor - warm Claude tones
-    const gradient = ctx.createRadialGradient(
-        arenaScreenX, arenaScreenY, 0,
-        arenaScreenX, arenaScreenY, arenaRadius
-    );
-    gradient.addColorStop(0, 'rgba(40, 36, 32, 0.5)');
-    gradient.addColorStop(0.6, 'rgba(32, 28, 24, 0.6)');
-    gradient.addColorStop(1, 'rgba(24, 20, 18, 0.7)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(arenaScreenX - arenaRadius, arenaScreenY - arenaRadius,
-        arenaRadius * 2, arenaRadius * 2);
+    // Chat box background - dark like Claude's interface
+    ctx.fillStyle = '#2d2a28';
+    ctx.fillRect(left, top, size, size);
 
-    // Clean grid overlay (subtle warm tone)
-    ctx.strokeStyle = 'rgba(60, 54, 48, 0.4)';
+    // Subtle inner gradient for depth
+    const gradient = ctx.createLinearGradient(left, top, left, top + size);
+    gradient.addColorStop(0, 'rgba(45, 42, 40, 1)');
+    gradient.addColorStop(0.5, 'rgba(35, 32, 30, 1)');
+    gradient.addColorStop(1, 'rgba(28, 26, 24, 1)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(left, top, size, size);
+
+    // Draw subtle grid lines like code editor
+    ctx.strokeStyle = 'rgba(70, 65, 60, 0.3)';
     ctx.lineWidth = 1;
-    const gridSize = 60;
-    const startX = Math.floor((arenaScreenX - arenaRadius) / gridSize) * gridSize;
-    const startY = Math.floor((arenaScreenY - arenaRadius) / gridSize) * gridSize;
-    const endX = arenaScreenX + arenaRadius;
-    const endY = arenaScreenY + arenaRadius;
+    const gridSize = 50;
 
     ctx.beginPath();
-    for (let x = startX; x <= endX; x += gridSize) {
-        ctx.moveTo(x, arenaScreenY - arenaRadius);
-        ctx.lineTo(x, arenaScreenY + arenaRadius);
+    for (let x = left; x <= left + size; x += gridSize) {
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, top + size);
     }
-    for (let y = startY; y <= endY; y += gridSize) {
-        ctx.moveTo(arenaScreenX - arenaRadius, y);
-        ctx.lineTo(arenaScreenX + arenaRadius, y);
+    for (let y = top; y <= top + size; y += gridSize) {
+        ctx.moveTo(left, y);
+        ctx.lineTo(left + size, y);
     }
     ctx.stroke();
+
+    // Draw "typing cursor" blinking effect in corner
+    const cursorBlink = Math.sin(Date.now() / 500) > 0;
+    if (cursorBlink) {
+        ctx.fillStyle = '#da7756';
+        ctx.fillRect(left + 20, top + size - 40, 12, 20);
+    }
 
     ctx.restore();
 
-    // 3. Arena boundary - warm coral
+    // 3. Draw chat box border - Claude orange accent
     ctx.strokeStyle = '#da7756';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(arenaScreenX, arenaScreenY, arenaRadius, 0, Math.PI * 2);
+    ctx.roundRect(left, top, size, size, cornerRadius);
     ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(218, 119, 86, 0.3)';
+    // Inner subtle border
+    ctx.strokeStyle = 'rgba(218, 119, 86, 0.2)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(arenaScreenX, arenaScreenY, arenaRadius - 8, 0, Math.PI * 2);
+    ctx.roundRect(left + 6, top + 6, size - 12, size - 12, cornerRadius - 4);
     ctx.stroke();
 
-    // 4. Storm pulse effect (subtle warm tone)
-    const pulse = Math.sin(Date.now() / 1000) * 0.04 + 0.08;
-    ctx.fillStyle = `rgba(80, 50, 30, ${pulse})`;
-    ctx.beginPath();
-    ctx.rect(-camera.x, -camera.y, ARENA_SIZE, ARENA_SIZE);
-    ctx.arc(arenaScreenX, arenaScreenY, arenaRadius, 0, Math.PI * 2, true);
-    ctx.fill();
+    // 4. Draw "Claude" label at top of chat box
+    ctx.fillStyle = '#da7756';
+    ctx.font = 'bold 14px "Söhne", "SF Pro", system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Claude', left + 20, top + 25);
+
+    // Thinking dots indicator
+    const dotPhase = Math.floor(Date.now() / 300) % 4;
+    ctx.fillStyle = 'rgba(218, 119, 86, 0.6)';
+    ctx.font = '12px monospace';
+    const dots = '.'.repeat(dotPhase);
+    ctx.fillText(dots, left + 75, top + 25);
+
+    // 5. Storm pulse effect outside the box
+    const pulse = Math.sin(Date.now() / 1000) * 0.03 + 0.05;
+    ctx.fillStyle = `rgba(218, 119, 86, ${pulse})`;
+    ctx.fillRect(-camera.x - 500, -camera.y - 500, ARENA_SIZE + 1000, top + 500);
+    ctx.fillRect(-camera.x - 500, top + size, ARENA_SIZE + 1000, ARENA_SIZE + 1000);
+    ctx.fillRect(-camera.x - 500, top, left + 500, size);
+    ctx.fillRect(left + size, top, ARENA_SIZE + 1000, size);
 }
 
 function drawPlayers() {
@@ -1432,41 +1454,52 @@ function drawPlayer(player, x, y, isLocal) {
     }
 }
 
+// Claude letter bullets - cycles through characters
+const BULLET_LETTERS = ['C', 'L', 'A', 'U', 'D', 'E', '>', '<', '/', '*', '.', '·'];
+
 function drawBullets() {
+    ctx.font = 'bold 16px "Söhne", "SF Pro", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
     for (const bullet of gameState.bullets) {
         const x = bullet.x - camera.x;
         const y = bullet.y - camera.y;
 
         if (x < -20 || x > canvas.width + 20 || y < -20 || y > canvas.height + 20) continue;
 
-        // Bullet trail
-        const trailLength = 18;
+        // Get letter based on bullet ID
+        const letterIndex = bullet.i % BULLET_LETTERS.length;
+        const letter = BULLET_LETTERS[letterIndex];
+
+        // Bullet trail of smaller letters
+        const trailLength = 24;
         const angle = Math.atan2(bullet.vy, bullet.vx);
 
-        const gradient = ctx.createLinearGradient(
-            x - Math.cos(angle) * trailLength, y - Math.sin(angle) * trailLength,
-            x, y
-        );
-        gradient.addColorStop(0, 'transparent');
-        gradient.addColorStop(1, bullet.c || '#e8a87c');
+        // Draw fading trail letters
+        ctx.font = 'bold 10px "Söhne", monospace';
+        for (let i = 3; i > 0; i--) {
+            const trailX = x - Math.cos(angle) * (trailLength / 3) * i;
+            const trailY = y - Math.sin(angle) * (trailLength / 3) * i;
+            const alpha = 0.15 * (3 - i);
+            ctx.fillStyle = `rgba(218, 119, 86, ${alpha})`;
+            ctx.fillText(letter, trailX, trailY);
+        }
 
-        ctx.strokeStyle = gradient;
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(x - Math.cos(angle) * trailLength, y - Math.sin(angle) * trailLength);
-        ctx.lineTo(x, y);
-        ctx.stroke();
+        // Main bullet letter
+        ctx.font = 'bold 16px "Söhne", "SF Pro", monospace';
 
-        // Bullet core
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
-        ctx.fill();
+        // Outer glow
+        ctx.fillStyle = 'rgba(218, 119, 86, 0.4)';
+        ctx.fillText(letter, x + 1, y + 1);
 
-        ctx.fillStyle = bullet.c || '#e8a87c';
-        ctx.beginPath();
-        ctx.arc(x, y, 6, 0, Math.PI * 2);
-        ctx.fill();
+        // Alternate between white and orange based on bullet ID
+        if (bullet.i % 2 === 0) {
+            ctx.fillStyle = '#ffffff';
+        } else {
+            ctx.fillStyle = '#da7756';
+        }
+        ctx.fillText(letter, x, y);
     }
 }
 
@@ -1585,24 +1618,37 @@ function drawDamageNumbers() {
 
 function drawMinimap() {
     const scale = 150 / ARENA_SIZE;
+    const arenaHalfSize = (gameState.arenaSize / 2) * scale;
+    const arenaLeft = 75 - arenaHalfSize;
+    const arenaTop = 75 - arenaHalfSize;
+    const arenaSize = arenaHalfSize * 2;
 
-    // Background
-    minimapCtx.fillStyle = '#1e1c1a';
+    // Background - dark terminal style
+    minimapCtx.fillStyle = '#1a1816';
     minimapCtx.fillRect(0, 0, 150, 150);
 
-    // Storm zone
-    minimapCtx.fillStyle = 'rgba(80, 50, 30, 0.4)';
+    // Storm zone (outside the square)
+    minimapCtx.fillStyle = 'rgba(218, 119, 86, 0.15)';
+    minimapCtx.fillRect(0, 0, 150, 150);
+
+    // Clear the safe zone (inside square)
+    minimapCtx.fillStyle = '#2d2a28';
     minimapCtx.beginPath();
-    minimapCtx.rect(0, 0, 150, 150);
-    minimapCtx.arc(75, 75, (gameState.arenaSize / 2) * scale, 0, Math.PI * 2, true);
+    minimapCtx.roundRect(arenaLeft, arenaTop, arenaSize, arenaSize, 4);
     minimapCtx.fill();
 
-    // Arena boundary
+    // Arena boundary - square chat box style
     minimapCtx.strokeStyle = '#da7756';
     minimapCtx.lineWidth = 2;
     minimapCtx.beginPath();
-    minimapCtx.arc(75, 75, (gameState.arenaSize / 2) * scale, 0, Math.PI * 2);
+    minimapCtx.roundRect(arenaLeft, arenaTop, arenaSize, arenaSize, 4);
     minimapCtx.stroke();
+
+    // "Claude" label at top
+    minimapCtx.fillStyle = '#da7756';
+    minimapCtx.font = '7px sans-serif';
+    minimapCtx.textAlign = 'left';
+    minimapCtx.fillText('Claude', arenaLeft + 3, arenaTop + 8);
 
     // Loot (small dots)
     for (const item of gameState.loot) {
@@ -1636,7 +1682,7 @@ function drawMinimap() {
         }
     }
 
-    // Border
+    // Outer border
     minimapCtx.strokeStyle = 'rgba(218, 119, 86, 0.3)';
     minimapCtx.lineWidth = 2;
     minimapCtx.strokeRect(0, 0, 150, 150);
