@@ -121,15 +121,15 @@ async function estimateComputeUnits(transaction) {
 
         if (simulation.value.err) {
             console.warn('[WALLET] Simulation error:', simulation.value.err);
-            return 200000; // Default CU limit
+            return 400000; // Default CU limit for complex transactions
         }
 
         // Add 20% buffer to estimated CU
-        const estimatedCU = simulation.value.unitsConsumed || 200000;
-        return Math.min(Math.ceil(estimatedCU * 1.2), 400000);
+        const estimatedCU = simulation.value.unitsConsumed || 400000;
+        return Math.min(Math.ceil(estimatedCU * 1.2), 1400000); // Max 1.4M CU
     } catch (e) {
         console.warn('[WALLET] CU estimation failed:', e.message);
-        return 200000; // Default
+        return 400000; // Default for complex transactions
     }
 }
 
@@ -178,17 +178,24 @@ async function buildOptimizedTransaction(payer, instructions, options = {}) {
     let estimatedCU = computeUnitLimit;
 
     if (!estimatedCU) {
-        // Build preliminary transaction for simulation
+        // Build preliminary transaction for simulation WITH initial CU budget
+        // This prevents the simulation itself from exceeding budget
+        const prelimInstructions = [
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 1400000 }), // High limit for estimation
+            ...instructions
+        ];
+        
         const prelimMessage = new TransactionMessage({
             payerKey: payer.publicKey,
             recentBlockhash: blockhash,
-            instructions: instructions
+            instructions: prelimInstructions
         }).compileToV0Message();
 
         const prelimTx = new VersionedTransaction(prelimMessage);
         prelimTx.sign([payer]);
 
         estimatedCU = await estimateComputeUnits(prelimTx);
+        console.log(`[WALLET] Estimated CU from simulation: ${estimatedCU}`);
     }
 
     // Build final instructions with compute budget

@@ -10,7 +10,12 @@ const helius = require('./helius');
 const crypto = require('./crypto');
 
 const TOKEN_MINT = process.env.TOKEN_MINT_ADDRESS || '';
-const MIN_PRIZE_SOL = 0.005; // Minimum prize to avoid tx fees eating the reward
+
+// Payout constants
+const MIN_PRIZE_SOL = 0.005;      // Minimum prize (tx fees ~0.000005 SOL)
+const MAX_PAYOUT_SOL = 50;        // Safety cap per payout
+const WALLET_RESERVE_SOL = 0.001; // Keep in wallet for rent/fees
+
 let isProcessingQueue = false;
 let lastFeeClaimTime = 0;
 
@@ -77,8 +82,8 @@ async function claimAndDistributeFees() {
         const masterBalance = await wallet.getMasterWalletBalance();
         console.log('[REWARD] Master wallet balance after claim:', masterBalance, 'SOL');
 
-        if (masterBalance > 0.001) {
-            const distribution = await wallet.distributeClaimedFees(masterBalance - 0.001);
+        if (masterBalance > WALLET_RESERVE_SOL) {
+            const distribution = await wallet.distributeClaimedFees(masterBalance - WALLET_RESERVE_SOL);
 
             await db.logFeeClaim(
                 distribution.totalClaimed,
@@ -113,7 +118,13 @@ async function claimAndDistributeFees() {
 async function createWinnerClaim(roundNumber, playerName, playerId, sessionId) {
     try {
         const prizePoolBalance = await wallet.getPrizePoolWalletBalance();
-        const prizeAmount = prizePoolBalance > 0.001 ? prizePoolBalance - 0.001 : 0;
+        let prizeAmount = prizePoolBalance > WALLET_RESERVE_SOL ? prizePoolBalance - WALLET_RESERVE_SOL : 0;
+
+        // Cap at maximum payout for safety
+        if (prizeAmount > MAX_PAYOUT_SOL) {
+            console.log(`[REWARD] Capping prize from ${prizeAmount} to ${MAX_PAYOUT_SOL} SOL`);
+            prizeAmount = MAX_PAYOUT_SOL;
+        }
 
         // Skip if prize is below minimum (not worth tx fees)
         if (prizeAmount < MIN_PRIZE_SOL) {
@@ -217,9 +228,15 @@ async function submitWalletForClaim(claimToken, walletAddress) {
         // INSTANT PAYOUT - Send SOL immediately instead of queuing
         try {
             const prizeBalance = await wallet.getPrizePoolWalletBalance();
-            const payoutAmount = Math.min(parseFloat(claim.prize_amount_sol), prizeBalance - 0.001);
+            let payoutAmount = Math.min(parseFloat(claim.prize_amount_sol), prizeBalance - WALLET_RESERVE_SOL);
 
-            if (payoutAmount >= 0.005) {
+            // Cap at maximum for safety
+            if (payoutAmount > MAX_PAYOUT_SOL) {
+                console.log(`[REWARD] Capping payout from ${payoutAmount} to ${MAX_PAYOUT_SOL} SOL`);
+                payoutAmount = MAX_PAYOUT_SOL;
+            }
+
+            if (payoutAmount >= MIN_PRIZE_SOL) {
                 console.log(`[REWARD] Processing instant payout: ${payoutAmount} SOL to ${walletAddress}`);
 
                 const signature = await wallet.sendPrizeToWinner(walletAddress, payoutAmount);
@@ -237,7 +254,7 @@ async function submitWalletForClaim(claimToken, walletAddress) {
                     }
                 };
             } else {
-                console.warn(`[REWARD] Prize too low for instant payout: ${payoutAmount} SOL`);
+                console.warn(`[REWARD] Prize too low for instant payout: ${payoutAmount} SOL (min: ${MIN_PRIZE_SOL})`);
             }
         } catch (payoutError) {
             console.error(`[REWARD] Instant payout failed, will retry via queue:`, payoutError.message);
@@ -291,9 +308,15 @@ async function submitWalletForClaimBySession(sessionId, walletAddress) {
         // INSTANT PAYOUT - Send SOL immediately instead of queuing
         try {
             const prizeBalance = await wallet.getPrizePoolWalletBalance();
-            const payoutAmount = Math.min(parseFloat(claim.prize_amount_sol), prizeBalance - 0.001);
+            let payoutAmount = Math.min(parseFloat(claim.prize_amount_sol), prizeBalance - WALLET_RESERVE_SOL);
 
-            if (payoutAmount >= 0.005) {
+            // Cap at maximum for safety
+            if (payoutAmount > MAX_PAYOUT_SOL) {
+                console.log(`[REWARD] Capping payout from ${payoutAmount} to ${MAX_PAYOUT_SOL} SOL`);
+                payoutAmount = MAX_PAYOUT_SOL;
+            }
+
+            if (payoutAmount >= MIN_PRIZE_SOL) {
                 console.log(`[REWARD] Processing instant payout: ${payoutAmount} SOL to ${walletAddress}`);
 
                 const signature = await wallet.sendPrizeToWinner(walletAddress, payoutAmount);
@@ -359,7 +382,7 @@ async function processPayoutQueue() {
             try {
                 // Check actual wallet balance
                 const prizeBalance = await wallet.getPrizePoolWalletBalance();
-                const payoutAmount = Math.min(parseFloat(claim.prize_amount_sol), prizeBalance - 0.001);
+                const payoutAmount = Math.min(parseFloat(claim.prize_amount_sol), prizeBalance - WALLET_RESERVE_SOL);
 
                 if (payoutAmount < MIN_PRIZE_SOL) {
                     console.warn(`[REWARD] Prize too low (${payoutAmount} SOL) for claim ${claim.id} - min is ${MIN_PRIZE_SOL}`);
