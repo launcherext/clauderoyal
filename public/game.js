@@ -595,24 +595,27 @@ function handleMessage(data) {
             // Handle spectator mode
             if (!localPlayer.alive && data.ph === 'active') {
                 const alivePlayers = data.p.filter(p => p.v === 1);
-                showSpectatorOverlay('YOU DIED', `${alivePlayers.length} player${alivePlayers.length !== 1 ? 's' : ''} remaining`);
+                showSpectatorOverlay('YOU DIED', `${alivePlayers.length} player${alivePlayers.length !== 1 ? 's' : ''} remaining`, true);
                 if (alivePlayers.length > 0 && !spectateTarget) {
                     spectateTarget = alivePlayers[0].i;
                 }
+                updateSpectatorTargetUI();
             } else if (isSpectator && data.ph === 'active') {
                 const alivePlayers = data.p.filter(p => p.v === 1);
-                showSpectatorOverlay('ROUND IN PROGRESS', `${alivePlayers.length} player${alivePlayers.length !== 1 ? 's' : ''} remaining`);
+                showSpectatorOverlay('WATCHING LIVE', `${alivePlayers.length} player${alivePlayers.length !== 1 ? 's' : ''} fighting`, true);
                 // Set spectate target so camera follows a player
                 if (alivePlayers.length > 0 && !spectateTarget) {
                     spectateTarget = alivePlayers[0].i;
                 }
+                updateSpectatorTargetUI();
             } else if (isSpectator && data.ph === 'waiting') {
-                showSpectatorOverlay('WAITING FOR PLAYERS', `${data.pc || 0} players in lobby`);
+                showSpectatorOverlay('WAITING FOR PLAYERS', `${data.pc || 0} player${data.pc !== 1 ? 's' : ''} in lobby - Need ${gameState.minPlayers || 2} to start`, false);
                 // Center camera on arena for waiting phase
                 localPlayer.x = ARENA_SIZE / 2;
                 localPlayer.y = ARENA_SIZE / 2;
             } else if (isSpectator && data.ph === 'ended') {
-                showSpectatorOverlay('ROUND ENDED', 'Next round starting soon');
+                const nextIn = data.nr || 0;
+                showSpectatorOverlay('ROUND ENDED', nextIn > 0 ? `Next round in ${nextIn}s - You'll join automatically` : 'Next round starting soon', false);
             } else {
                 hideSpectatorOverlay();
             }
@@ -826,7 +829,9 @@ function updateLobby(nextRoundIn, lobbyPlayers, phase, playerCount, aliveCount) 
 // ============================================================================
 // SPECTATOR OVERLAY
 // ============================================================================
-function showSpectatorOverlay(title, message) {
+let spectatorTargetIndex = 0; // Track which player we're watching
+
+function showSpectatorOverlay(title, message, showTargetInfo = false) {
     const overlay = document.getElementById('spectatorOverlay');
     const titleEl = document.getElementById('spectatorTitle');
     const messageEl = document.getElementById('spectatorMessage');
@@ -834,10 +839,57 @@ function showSpectatorOverlay(title, message) {
     if (titleEl) titleEl.textContent = title;
     if (messageEl) messageEl.textContent = message;
     overlay.classList.add('show');
+
+    // Toggle target info visibility
+    if (showTargetInfo) {
+        overlay.classList.add('watching');
+    } else {
+        overlay.classList.remove('watching');
+    }
 }
 
 function hideSpectatorOverlay() {
-    document.getElementById('spectatorOverlay').classList.remove('show');
+    const overlay = document.getElementById('spectatorOverlay');
+    overlay.classList.remove('show');
+    overlay.classList.remove('watching');
+}
+
+function updateSpectatorTargetUI() {
+    if (!spectateTarget || !gameState.players) return;
+
+    const target = gameState.players.find(p => p.i === spectateTarget);
+    if (!target) return;
+
+    const nameEl = document.getElementById('watchingName');
+    const killsEl = document.getElementById('watchingKills');
+    const healthEl = document.getElementById('watchingHealth');
+
+    if (nameEl) nameEl.textContent = target.n || 'Unknown';
+    if (killsEl) killsEl.textContent = `${target.k || 0} kills`;
+    if (healthEl) {
+        const health = target.h || 0;
+        const shield = target.sh || 0;
+        healthEl.textContent = shield > 0 ? `${health} HP + ${shield} Shield` : `${health} HP`;
+    }
+}
+
+function cycleSpectateTarget(direction = 1) {
+    if (!gameState.players) return;
+
+    const alivePlayers = gameState.players.filter(p => p.v === 1);
+    if (alivePlayers.length === 0) return;
+
+    // Find current index
+    let currentIndex = alivePlayers.findIndex(p => p.i === spectateTarget);
+    if (currentIndex === -1) currentIndex = 0;
+
+    // Cycle to next/prev
+    currentIndex = (currentIndex + direction + alivePlayers.length) % alivePlayers.length;
+    spectateTarget = alivePlayers[currentIndex].i;
+    spectatorTargetIndex = currentIndex;
+
+    // Update UI
+    updateSpectatorTargetUI();
 }
 
 function updateLeaderboardUI(leaderboard) {
@@ -895,6 +947,12 @@ function addKillFeed(killer, victim) {
 document.addEventListener('keydown', (e) => {
     const key = e.key.toLowerCase();
     if (key in keys) keys[key] = true;
+
+    // Space to cycle spectate targets when spectating
+    if (e.key === ' ' && (!localPlayer.alive || isSpectator) && gameState.phase === 'active') {
+        e.preventDefault();
+        cycleSpectateTarget(1);
+    }
 });
 
 document.addEventListener('keyup', (e) => {
@@ -909,6 +967,12 @@ document.addEventListener('mousemove', (e) => {
 
 document.addEventListener('click', (e) => {
     if (e.target.closest('#menu') || e.target.closest('#roundEndOverlay')) return;
+
+    // If spectating, cycle to next player on click
+    if ((!localPlayer.alive || isSpectator) && gameState.phase === 'active') {
+        cycleSpectateTarget(1);
+        return;
+    }
 
     const now = Date.now();
     if (localPlayer.alive && ws && ws.readyState === 1 && now - lastShootTime > SHOOT_COOLDOWN) {
@@ -925,21 +989,45 @@ document.addEventListener('click', (e) => {
 // ============================================================================
 // UPDATE LOOP
 // ============================================================================
+// Smooth spectator camera transition
+let spectatorCameraTarget = { x: ARENA_SIZE / 2, y: ARENA_SIZE / 2 };
+let spectatorCameraLerp = 0.08; // Smooth follow speed
+
 function updateLocalPlayer(dt) {
     if (!localPlayer.alive || isSpectator) {
-        // Spectator camera follows target
+        // Spectator camera follows target with smooth transition
         if (spectateTarget && gameState.players) {
             const target = gameState.players.find(p => p.i === spectateTarget);
             if (target && target.v === 1) {
-                localPlayer.x = target.x;
-                localPlayer.y = target.y;
+                // Smoothly move camera to target position
+                spectatorCameraTarget.x = target.x;
+                spectatorCameraTarget.y = target.y;
             } else {
+                // Target died - find a new one and smoothly transition
                 const alive = gameState.players.filter(p => p.v === 1);
                 if (alive.length > 0) {
-                    spectateTarget = alive[0].i;
+                    // Pick next alive player (cycle forward)
+                    cycleSpectateTarget(1);
+                    const newTarget = gameState.players.find(p => p.i === spectateTarget);
+                    if (newTarget) {
+                        spectatorCameraTarget.x = newTarget.x;
+                        spectatorCameraTarget.y = newTarget.y;
+                    }
+                } else {
+                    // No alive players - center on arena
+                    spectatorCameraTarget.x = ARENA_SIZE / 2;
+                    spectatorCameraTarget.y = ARENA_SIZE / 2;
                 }
             }
+        } else if (gameState.phase === 'waiting' || gameState.phase === 'ended') {
+            // Center camera on arena when waiting/ended
+            spectatorCameraTarget.x = ARENA_SIZE / 2;
+            spectatorCameraTarget.y = ARENA_SIZE / 2;
         }
+
+        // Smooth camera interpolation for spectator mode
+        localPlayer.x = lerp(localPlayer.x, spectatorCameraTarget.x, spectatorCameraLerp);
+        localPlayer.y = lerp(localPlayer.y, spectatorCameraTarget.y, spectatorCameraLerp);
         return;
     }
 

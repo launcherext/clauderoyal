@@ -4,7 +4,9 @@
    ============================================================================ */
 
 /* Reset & Base */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -100,8 +102,15 @@ body::before {
 }
 
 @keyframes bgPulse {
-    0%, 100% { opacity: 0.5; }
-    50% { opacity: 1; }
+
+    0%,
+    100% {
+        opacity: 0.5;
+    }
+
+    50% {
+        opacity: 1;
+    }
 }
 
 #loadingScreen.hidden {
@@ -119,8 +128,15 @@ body::before {
 }
 
 @keyframes logoFloat {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
 }
 
 .loading-bar-container {
@@ -151,8 +167,13 @@ body::before {
 }
 
 @keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
 }
 
 #loadingText {
@@ -201,7 +222,7 @@ body::before {
     display: none;
 }
 
-#menu > * {
+#menu>* {
     position: relative;
     z-index: 1;
 }
@@ -285,7 +306,7 @@ body::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, transparent, rgba(255,255,255,0.2), transparent);
+    background: linear-gradient(135deg, transparent, rgba(255, 255, 255, 0.2), transparent);
     transform: translateX(-100%);
     transition: transform 0.5s ease;
 }
@@ -412,7 +433,7 @@ body::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, rgba(255,255,255,0.3) 0%, transparent 50%);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.3) 0%, transparent 50%);
 }
 
 /* Shield Bar */
@@ -436,7 +457,7 @@ body::before {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, rgba(255,255,255,0.4) 0%, transparent 50%);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, transparent 50%);
 }
 
 /* Weapon Info */
@@ -461,10 +482,21 @@ body::before {
     color: var(--secondary);
 }
 
-#weaponName.pistol { color: #ffff00; }
-#weaponName.shotgun { color: #ff6b4a; }
-#weaponName.smg { color: #00e5ff; }
-#weaponName.sniper { color: #b388ff; }
+#weaponName.pistol {
+    color: #ffff00;
+}
+
+#weaponName.shotgun {
+    color: #ff6b4a;
+}
+
+#weaponName.smg {
+    color: #00e5ff;
+}
+
+#weaponName.sniper {
+    color: #b388ff;
+}
 
 #gameInfo {
     padding: 10px 16px 12px;
@@ -554,6 +586,7 @@ body::before {
         opacity: 0;
         transform: translateX(-30px);
     }
+
     to {
         opacity: 1;
         transform: translateX(0);
@@ -827,9 +860,12 @@ body::before {
 }
 
 @keyframes warningPulse {
-    0%, 100% {
+
+    0%,
+    100% {
         box-shadow: 0 0 40px rgba(255, 61, 90, 0.4);
     }
+
     50% {
         box-shadow: 0 0 80px rgba(255, 61, 90, 0.6);
     }
@@ -865,8 +901,15 @@ body::before {
 }
 
 @keyframes spectatorPulse {
-    0%, 100% { box-shadow: 0 8px 40px rgba(0, 229, 255, 0.2); }
-    50% { box-shadow: 0 8px 60px rgba(0, 229, 255, 0.4); }
+
+    0%,
+    100% {
+        box-shadow: 0 8px 40px rgba(0, 229, 255, 0.2);
+    }
+
+    50% {
+        box-shadow: 0 8px 60px rgba(0, 229, 255, 0.4);
+    }
 }
 
 #spectatorOverlay #spectatorTitle {
@@ -884,6 +927,65 @@ body::before {
     letter-spacing: 2px;
     color: rgba(255, 255, 255, 0.7);
     font-weight: 500;
+}
+
+#spectatorInfo {
+    display: none;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+}
+
+#spectatorOverlay.watching #spectatorInfo {
+    display: block;
+}
+
+#spectatorTarget {
+    font-size: 0.9rem;
+    color: #fff;
+    margin-bottom: 6px;
+}
+
+#watchingName {
+    color: var(--accent);
+    font-weight: bold;
+}
+
+#spectatorStats {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 8px;
+}
+
+#watchingKills {
+    color: #ff6b6b;
+}
+
+#watchingHealth {
+    color: #2ecc71;
+}
+
+#spectatorControls {
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 1px;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 0.5;
+    }
+
+    50% {
+        opacity: 1;
+    }
 }
 
 /* ============================================================================
@@ -910,7 +1012,7 @@ body::before {
     animation: bgPulse 3s ease-in-out infinite;
 }
 
-#roundEndOverlay > * {
+#roundEndOverlay>* {
     position: relative;
     z-index: 1;
 }
@@ -1042,10 +1144,12 @@ body::before {
         transform: translate(-50%, -50%) scale(2);
         opacity: 0;
     }
+
     50% {
         transform: translate(-50%, -50%) scale(1);
         opacity: 1;
     }
+
     100% {
         transform: translate(-50%, -50%) scale(0.8);
         opacity: 0.6;
@@ -1101,6 +1205,7 @@ body::before {
         opacity: 0;
         transform: translateX(30px) scale(0.9);
     }
+
     to {
         opacity: 1;
         transform: translateX(0) scale(1);
@@ -1112,6 +1217,7 @@ body::before {
         opacity: 0;
         transform: translateX(-30px);
     }
+
     to {
         opacity: 1;
         transform: translateX(0);
@@ -1119,13 +1225,25 @@ body::before {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
 }
 
 /* ============================================================================
@@ -1239,7 +1357,9 @@ body::before {
 
 /* Disable printing */
 @media print {
-    body { display: none; }
+    body {
+        display: none;
+    }
 }
 
 /* ============================================================================
@@ -1291,4 +1411,32 @@ body::before {
     #lobby {
         display: none;
     }
+}
+
+/* ============================================================================
+   SOCIAL MEDIA LINKS
+   ============================================================================ */
+#socialTwitter {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+#socialTwitter:hover {
+    background: rgba(224, 122, 95, 0.15) !important;
+    border-color: #E07A5F !important;
+    transform: translateY(-3px);
+    box-shadow:
+        0 8px 32px rgba(224, 122, 95, 0.3),
+        0 0 40px rgba(224, 122, 95, 0.2);
+}
+
+#socialTwitter:active {
+    transform: translateY(-1px);
+}
+
+#socialTwitter svg path {
+    transition: fill 0.3s ease;
+}
+
+#socialTwitter:hover svg path {
+    fill: #ff8e7a;
 }

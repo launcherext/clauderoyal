@@ -43,8 +43,9 @@ const ROUND_DURATION = 120000;  // 2 minutes max round time
 
 // ============================================================================
 // BULLET OBJECT POOL - Zero allocation during gameplay
+// Sized for 50+ concurrent players (SMG fires 10 bullets/sec per player)
 // ============================================================================
-const BULLET_POOL_SIZE = 500;
+const BULLET_POOL_SIZE = 1500;
 const bulletPool = {
     pool: [],
     activeList: [],
@@ -167,7 +168,7 @@ const LOOT_TYPES = {
     sniper: { id: 'sniper', name: 'Sniper', color: '#b388ff', weapon: true }
 };
 
-const LOOT_POOL_SIZE = 100;
+const LOOT_POOL_SIZE = 200; // Increased for larger games with 50+ players
 const lootPool = {
     items: [],
     activeList: [],
@@ -223,14 +224,18 @@ const lootPool = {
 
 lootPool.init();
 
-// Spawn loot around the arena
+// Spawn loot around the arena - scales with player count
 function spawnInitialLoot() {
     lootPool.clear();
     const lootTypes = Object.keys(LOOT_TYPES);
     const center = ARENA_SIZE / 2;
 
-    // Spawn 30-40 items around the map
-    const lootCount = 30 + Math.floor(Math.random() * 10);
+    // Scale loot count with player count (base 30-40, +5 per player above 5)
+    const playerCount = Object.keys(gameState.players).length;
+    const baseLoot = 30 + Math.floor(Math.random() * 10);
+    const extraLoot = Math.max(0, playerCount - 5) * 5;
+    const lootCount = Math.min(baseLoot + extraLoot, 150); // Cap at 150
+
     for (let i = 0; i < lootCount; i++) {
         const type = lootTypes[Math.floor(Math.random() * lootTypes.length)];
         const angle = Math.random() * Math.PI * 2;
@@ -1207,7 +1212,8 @@ server.listen(PORT, () => {
 ║         High-Performance Battle Royale Server             ║
 ╠═══════════════════════════════════════════════════════════╣
 ║  Server running on http://localhost:${PORT}                  ║
-║  Tick Rate: ${TICK_RATE} FPS | Bullet Pool: ${BULLET_POOL_SIZE}             ║
+║  Tick Rate: ${TICK_RATE} FPS | Bullet Pool: ${BULLET_POOL_SIZE}            ║
+║  Loot Pool: ${LOOT_POOL_SIZE} | Optimized for 50+ players            ║
 ║  Zero-allocation game loop initialized                    ║
 ╚═══════════════════════════════════════════════════════════╝
     `);

@@ -160,6 +160,7 @@ module.exports = {
     verifyClaimToken,
     hashClaimToken,
     generateApiKey,
-    secureCompare,
-    CLAIM_SECRET
+    secureCompare
+    // SECURITY (M-3 fix): CLAIM_SECRET is NOT exported
+    // Exposing signing secrets allows any importing module to forge tokens
 };

@@ -169,7 +169,7 @@ async function createWinnerClaim(roundNumber, playerName, playerId, sessionId) {
 
 /**
  * Submit wallet address to claim prize
- * SECURITY: Requires valid claim token, not just session ID
+ * SECURITY: Requires valid claim token, uses atomic DB locking to prevent race conditions
  * @param {string} claimToken - Cryptographic claim token
  * @param {string} walletAddress - Solana wallet address
  * @returns {Object} Result
@@ -181,7 +181,7 @@ async function submitWalletForClaim(claimToken, walletAddress) {
         return { success: false, error: 'Invalid Solana address' };
     }
 
-    // Verify claim token
+    // Verify claim token cryptographic signature
     const tokenData = crypto.verifyClaimToken(claimToken);
     if (!tokenData) {
         console.warn('[SECURITY] Invalid or expired claim token submitted');
@@ -190,37 +190,35 @@ async function submitWalletForClaim(claimToken, walletAddress) {
     }
 
     try {
-        // Look up claim by token hash
         const tokenHash = crypto.hashClaimToken(claimToken);
-        const claim = await db.getClaimByTokenHash(tokenHash);
 
-        if (!claim) {
-            console.warn('[SECURITY] Claim token not found in database');
-            await db.logSecurityEvent('claim_not_found', null, {
-                tokenHash: tokenHash.substring(0, 16),
-                walletAddress
-            });
-            return { success: false, error: 'No eligible claim found or claim expired' };
+        // SECURITY: Atomic lock-and-submit prevents race condition (CU-1 fix)
+        // This uses FOR UPDATE to lock the row during validation + update
+        const lockResult = await db.lockAndSubmitClaim(tokenHash, walletAddress);
+
+        if (!lockResult.success) {
+            if (lockResult.error === 'Claim not found or expired') {
+                console.warn('[SECURITY] Claim token not found in database');
+                await db.logSecurityEvent('claim_not_found', null, {
+                    tokenHash: tokenHash.substring(0, 16),
+                    walletAddress
+                });
+            }
+            return { success: false, error: lockResult.error };
         }
 
-        if (claim.claim_status !== 'eligible') {
-            return { success: false, error: 'Claim already processed' };
-        }
+        const claim = lockResult.claim;
 
-        // Verify token data matches claim
+        // Verify token data matches claim (defense in depth)
         if (claim.round_id !== tokenData.roundId) {
             console.warn('[SECURITY] Token round ID mismatch');
             await db.logSecurityEvent('token_mismatch', null, {
                 claimRoundId: claim.round_id,
                 tokenRoundId: tokenData.roundId
             });
+            // Revert the claim status since validation failed
+            await db.updateClaimStatus(claim.id, 'eligible');
             return { success: false, error: 'Invalid claim token' };
-        }
-
-        const updated = await db.updateClaimWallet(claim.id, walletAddress);
-
-        if (!updated) {
-            return { success: false, error: 'Failed to update claim' };
         }
 
         console.log(`[REWARD] Wallet submitted for claim ${claim.round_id}: ${walletAddress}`);
@@ -276,12 +274,21 @@ async function submitWalletForClaim(claimToken, walletAddress) {
 }
 
 /**
- * Legacy session-based claim (for backwards compatibility)
+ * Legacy session-based claim - DEPRECATED but still functional during transition
  * @deprecated Use submitWalletForClaim with claimToken instead
+ * Session-based claims are less secure than token-based claims.
+ * This function logs a security warning but still processes the claim.
  */
 async function submitWalletForClaimBySession(sessionId, walletAddress) {
-    console.warn('[SECURITY] Legacy session-based claim used - consider upgrading to token-based claims');
+    // SECURITY (H-2): Log warning for legacy claims - helps track migration
+    console.warn('[SECURITY] Legacy session-based claim used - client should upgrade to token-based claims');
+    await db.logSecurityEvent('legacy_claim_warning', null, {
+        sessionId: sessionId ? sessionId.substring(0, 16) + '...' : 'none',
+        walletAddress,
+        recommendation: 'Upgrade client to use claimToken'
+    });
 
+    // Still process the claim (soft block - log but allow)
     if (!wallet.validateSolanaAddress(walletAddress)) {
         return { success: false, error: 'Invalid Solana address' };
     }

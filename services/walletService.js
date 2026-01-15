@@ -15,6 +15,41 @@ const {
 const bs58 = require('bs58').default;
 const helius = require('./helius');
 
+// SECURITY (M-2 fix): Safe SOL/lamport conversion using BigInt
+// JavaScript floats lose precision above 2^53, BigInt is exact for integers
+const LAMPORTS_BIGINT = BigInt(LAMPORTS_PER_SOL);
+
+/**
+ * Safely convert SOL to lamports using BigInt arithmetic
+ * Avoids floating point precision errors for large amounts
+ * @param {number|string} solAmount - Amount in SOL
+ * @returns {bigint} Amount in lamports
+ */
+function solToLamportsSafe(solAmount) {
+    // Handle string input for maximum precision
+    const solStr = String(solAmount);
+    const [whole, decimal = ''] = solStr.split('.');
+
+    // Pad or truncate decimal to 9 places (lamport precision)
+    const decimalPadded = (decimal + '000000000').slice(0, 9);
+
+    // Combine as integer string and convert to BigInt
+    const lamportsStr = whole + decimalPadded;
+    return BigInt(lamportsStr.replace(/^0+/, '') || '0');
+}
+
+/**
+ * Safely convert lamports to SOL
+ * @param {bigint|number} lamports - Amount in lamports
+ * @returns {number} Amount in SOL (for display/logging)
+ */
+function lamportsToSolSafe(lamports) {
+    const lamportsBigInt = BigInt(lamports);
+    const whole = lamportsBigInt / LAMPORTS_BIGINT;
+    const remainder = lamportsBigInt % LAMPORTS_BIGINT;
+    return Number(whole) + Number(remainder) / LAMPORTS_PER_SOL;
+}
+
 // RPC Configuration
 const HELIUS_RPC = process.env.HELIUS_RPC_URL || `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY || ''}`;
 const connection = new Connection(HELIUS_RPC, {
@@ -257,14 +292,22 @@ async function sendSol(fromPrivateKey, toAddress, amountSol) {
     }
 
     const toPublicKey = new PublicKey(toAddress);
-    const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
+
+    // SECURITY (M-2 fix): Use BigInt for precise lamport calculation
+    const lamportsBigInt = solToLamportsSafe(amountSol);
+    const lamports = Number(lamportsBigInt); // SystemProgram.transfer accepts number
+
+    // Sanity check - ensure BigInt didn't overflow Number
+    if (lamports > Number.MAX_SAFE_INTEGER) {
+        throw new Error(`Amount too large: ${amountSol} SOL exceeds safe integer limit`);
+    }
 
     // Check balance with buffer for fees
     const balance = await connection.getBalance(fromKeypair.publicKey);
     const estimatedFee = 10000; // ~10k lamports for fees (conservative)
 
     if (balance < lamports + estimatedFee) {
-        throw new Error(`Insufficient balance. Have: ${balance / LAMPORTS_PER_SOL} SOL, Need: ${amountSol} SOL + fees`);
+        throw new Error(`Insufficient balance. Have: ${lamportsToSolSafe(balance)} SOL, Need: ${amountSol} SOL + fees`);
     }
 
     // Build transfer instruction
@@ -453,6 +496,9 @@ module.exports = {
     getReservePublicKey,
     getWalletStatus,
     buildOptimizedTransaction,
-    getDynamicPriorityFee
+    getDynamicPriorityFee,
+    // Safe conversion utilities (M-2 fix)
+    solToLamportsSafe,
+    lamportsToSolSafe
     // SECURITY: Do NOT export WALLET_KEYS or keypairs
 };

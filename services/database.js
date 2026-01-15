@@ -190,6 +190,62 @@ async function getClaimByTokenHash(tokenHash) {
     return result.rows[0];
 }
 
+/**
+ * SECURITY: Atomically lock and update claim for wallet submission
+ * Prevents race condition where same token is submitted multiple times
+ * Uses FOR UPDATE to lock the row during the entire transaction
+ * @param {string} tokenHash - SHA256 hash of the claim token
+ * @param {string} walletAddress - Destination wallet address
+ * @returns {Object} { claim, success, error }
+ */
+async function lockAndSubmitClaim(tokenHash, walletAddress) {
+    if (!pool) throw new Error('Database not configured');
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // FOR UPDATE locks this row - no other transaction can touch it
+        const result = await client.query(`
+            SELECT * FROM pending_claims
+            WHERE claim_token_hash = $1
+            AND expires_at > NOW()
+            FOR UPDATE
+        `, [tokenHash]);
+
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return { success: false, error: 'Claim not found or expired', claim: null };
+        }
+
+        const claim = result.rows[0];
+
+        // Check status AFTER locking - this is the atomic guarantee
+        if (claim.claim_status !== 'eligible') {
+            await client.query('ROLLBACK');
+            return { success: false, error: 'Claim already processed', claim: null };
+        }
+
+        // Update to queued status atomically
+        const updateResult = await client.query(`
+            UPDATE pending_claims
+            SET wallet_address = $2,
+                claim_status = 'queued'
+            WHERE id = $1
+            RETURNING *
+        `, [claim.id, walletAddress]);
+
+        await client.query('COMMIT');
+
+        return { success: true, error: null, claim: updateResult.rows[0] };
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+}
+
 async function updateClaimWallet(claimId, walletAddress) {
     if (!pool) throw new Error('Database not configured');
 
@@ -477,6 +533,7 @@ module.exports = {
     getPendingClaim,
     getClaimBySession,
     getClaimByTokenHash,
+    lockAndSubmitClaim, // SECURITY: Atomic claim submission
     updateClaimWallet,
     updateClaimStatus,
     getQueuedClaims,
