@@ -1567,3 +1567,13 @@ body::before {
 #socialTwitter:hover svg path {
     fill: #ff8e7a;
 }
+
+/* ============================================================================
+   TOKEN INFO
+   ============================================================================ */
+.token-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+}
