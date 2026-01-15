@@ -5,9 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#0a0a15">
-    <meta name="description" content="Claude Royale - Real-time multiplayer battle royale game">
+    <meta name="description" content="Drop Zone - Real-time multiplayer battle royale game">
 
-    <title>Claude Royale - Battle Royale</title>
+    <title>Drop Zone - Battle Royale</title>
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="Untitled design (27).png">
@@ -27,7 +27,7 @@
     <!-- WELCOME POPUP -->
     <div id="welcomePopup" class="popup-overlay">
         <div class="popup-content">
-            <h2>Welcome to Claude Royale</h2>
+            <h2>Welcome to Drop Zone</h2>
             <div class="popup-rules">
                 <p><strong>5 Players</strong> starts the round</p>
                 <p><strong>Last one alive</strong> wins the prize pool</p>
@@ -39,7 +39,7 @@
 
     <!-- LOADING SCREEN -->
     <div id="loadingScreen" class="gpu-layer">
-        <img src="Untitled (1000 x 250 px).png" alt="Claude Royale" class="logo">
+        <img src="Untitled (1000 x 250 px).png" alt="Drop Zone" class="logo">
         <div class="loading-bar-container">
             <div class="loading-bar" id="loadingBar"></div>
         </div>
@@ -48,7 +48,7 @@
 
     <!-- MAIN MENU -->
     <div id="menu">
-        <img src="Untitled (1000 x 250 px).png" alt="Claude Royale" class="logo">
+        <img src="Untitled (1000 x 250 px).png" alt="Drop Zone" class="logo">
         <div class="subtitle">Last One Standing Wins SOL</div>
         <input type="text" id="nameInput" placeholder="Enter your name" maxlength="15" autocomplete="off"
             spellcheck="false">
@@ -99,12 +99,12 @@
 
         <!-- LOBBY SIDEBAR -->
         <div id="lobby" class="gpu-layer"
-            style="position: fixed; right: 10px; top: 180px; background: rgba(10, 10, 21, 0.95); border: 1px solid #E07A5F; border-radius: 8px; padding: 12px; min-width: 150px; z-index: 90;">
-            <h3 style="margin: 0 0 8px 0; color: #E07A5F; font-size: 12px; text-transform: uppercase;">Players</h3>
-            <div id="lobbyNextRound" style="color: #00e5ff; font-size: 11px; margin-bottom: 10px; font-weight: bold;">
+            style="position: fixed; right: 10px; top: 180px; border-radius: 12px; padding: 12px; min-width: 150px; z-index: 90;">
+            <h3 style="margin: 0 0 8px 0; color: #ece5dd; font-size: 11px; font-weight: 600;">Players</h3>
+            <div id="lobbyNextRound" style="color: #da7756; font-size: 11px; margin-bottom: 10px; font-weight: 500;">
                 Waiting...</div>
-            <div style="display: flex; gap: 15px; margin-bottom: 10px; font-size: 11px;">
-                <div><span style="color: #2ecc71;">●</span> <span id="lobbyPlaying">0</span> alive</div>
+            <div style="display: flex; gap: 15px; margin-bottom: 10px; font-size: 11px; color: #9a938b;">
+                <div><span style="color: #7bc47f;">●</span> <span id="lobbyPlaying">0</span> alive</div>
                 <div><span style="color: #666;">●</span> <span id="lobbyWaiting">0</span> dead</div>
             </div>
             <div id="lobbyPlayerList" style="max-height: 150px; overflow-y: auto; font-size: 10px;"></div>
@@ -143,11 +143,11 @@
         <!-- SOCIAL MEDIA LINKS -->
         <a href="https://x.com/ObscuraApp" target="_blank" rel="noopener noreferrer" id="socialTwitter"
             class="gpu-layer"
-            style="position: fixed; bottom: 20px; right: 20px; background: rgba(10, 10, 21, 0.9); border: 1px solid #E07A5F; border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; z-index: 1000; transition: all 0.3s ease; text-decoration: none;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            style="position: fixed; bottom: 20px; right: 20px; border-radius: 50%; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; z-index: 1000; transition: all 0.2s ease; text-decoration: none;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
                     d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
-                    fill="#E07A5F" />
+                    fill="#da7756" />
             </svg>
         </a>
     </div>

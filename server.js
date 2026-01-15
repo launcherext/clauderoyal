@@ -1208,7 +1208,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
 ╔═══════════════════════════════════════════════════════════╗
-║                    CLAUDE ROYALE                          ║
+║                      DROP ZONE                            ║
 ║         High-Performance Battle Royale Server             ║
 ╠═══════════════════════════════════════════════════════════╣
 ║  Server running on http://localhost:${PORT}                  ║

@@ -1,5 +1,5 @@
 // ============================================================================
-// CLAUDE ROYALE - High Performance Game Client
+// DROP ZONE - High Performance Game Client
 // Client-Side Prediction | Entity Interpolation | Zero-Allocation Rendering
 // ============================================================================
 
@@ -486,7 +486,7 @@ function connect() {
     ws = new WebSocket(`${protocol}//${window.location.host}`);
 
     ws.onopen = () => {
-        console.log('Connected to Claude Royale');
+        console.log('Connected to Drop Zone');
         ws.send(JSON.stringify({ t: 'j', n: playerName }));
     };
 

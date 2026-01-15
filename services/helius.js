@@ -6,7 +6,7 @@ const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY
 async function rpcCall(method, params) {
     const payload = JSON.stringify({
         jsonrpc: '2.0',
-        id: 'claude-royale',
+        id: 'drop-zone',
         method,
         params
     });
