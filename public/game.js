@@ -365,6 +365,7 @@ const ANGLE_THRESHOLD = 0.05; // ~3 degrees before sending angle update
 let gameState = {
     players: [],
     bullets: [],
+    loot: [],           // Loot items on map
     arenaSize: 2000,
     phase: 'waiting',
     winner: null,
@@ -379,10 +380,76 @@ let localPlayer = {
     x: 1000,
     y: 1000,
     angle: 0,
-    health: 100,
+    health: 150,
+    shield: 0,
+    weapon: 'pistol',
     alive: true,
     kills: 0
 };
+
+// Weapon definitions (sent from server)
+let WEAPONS = {};
+
+// Loot type colors/icons
+const LOOT_COLORS = {
+    health: '#2ecc71',
+    shield: '#3498db',
+    shotgun: '#ff6b4a',
+    smg: '#00e5ff',
+    sniper: '#b388ff'
+};
+
+// ============================================================================
+// VISUAL EFFECTS - Screen shake, hit markers, damage numbers
+// ============================================================================
+let screenShake = { intensity: 0, duration: 0 };
+const hitMarkers = [];     // { x, y, time }
+const damageNumbers = [];  // { x, y, damage, time, color }
+
+function addScreenShake(intensity, duration) {
+    screenShake.intensity = Math.max(screenShake.intensity, intensity);
+    screenShake.duration = Math.max(screenShake.duration, duration);
+}
+
+function addHitMarker() {
+    hitMarkers.push({ time: Date.now() });
+}
+
+function addDamageNumber(x, y, damage, isShield = false) {
+    damageNumbers.push({
+        x, y,
+        damage,
+        time: Date.now(),
+        vy: -2,
+        color: isShield ? '#3498db' : '#ff3d5a'
+    });
+}
+
+function updateVisualEffects(dt) {
+    // Update screen shake
+    if (screenShake.duration > 0) {
+        screenShake.duration -= dt;
+        if (screenShake.duration <= 0) {
+            screenShake.intensity = 0;
+        }
+    }
+
+    // Update damage numbers (float up and fade)
+    for (let i = damageNumbers.length - 1; i >= 0; i--) {
+        const dn = damageNumbers[i];
+        dn.y += dn.vy;
+        if (Date.now() - dn.time > 1000) {
+            damageNumbers.splice(i, 1);
+        }
+    }
+
+    // Clean up old hit markers
+    for (let i = hitMarkers.length - 1; i >= 0; i--) {
+        if (Date.now() - hitMarkers[i].time > 200) {
+            hitMarkers.splice(i, 1);
+        }
+    }
+}
 
 let camera = { x: 0, y: 0 };
 let targetCamera = { x: 0, y: 0 };
@@ -421,11 +488,19 @@ function handleMessage(data) {
                 x: data.p.x,
                 y: data.p.y,
                 health: data.p.h,
+                shield: data.p.sh || 0,
+                weapon: data.p.w || 'pistol',
                 alive: data.p.v === 1,
                 color: data.p.c,
                 kills: 0
             };
             isSpectator = data.p.sp || false;
+
+            // Store weapon definitions from server
+            if (data.wp) {
+                WEAPONS = data.wp;
+            }
+
             document.getElementById('menu').classList.add('hidden');
 
             if (data.lb) updateLeaderboardUI(data.lb);
@@ -451,6 +526,8 @@ function handleMessage(data) {
                 if (p.i === playerId) {
                     // Update local player from server (for health, kills, etc)
                     localPlayer.health = p.h;
+                    localPlayer.shield = p.sh || 0;
+                    localPlayer.weapon = p.w || 'pistol';
                     localPlayer.alive = p.v === 1;
                     localPlayer.kills = p.k;
                     localPlayer.color = p.c;
@@ -461,6 +538,8 @@ function handleMessage(data) {
                         y: p.y,
                         angle: p.a,
                         health: p.h,
+                        shield: p.sh || 0,
+                        weapon: p.w || 'pistol',
                         alive: p.v === 1,
                         color: p.c,
                         name: p.n,
@@ -472,9 +551,24 @@ function handleMessage(data) {
             // Store raw player data for minimap
             gameState.players = data.p;
             gameState.bullets = data.b;
+            gameState.loot = data.l || [];  // Loot items
 
-            // Update UI
-            document.getElementById('healthFill').style.width = localPlayer.health + '%';
+            // Update UI - Health bar shows health out of 150
+            const healthPercent = (localPlayer.health / 150) * 100;
+            document.getElementById('healthFill').style.width = healthPercent + '%';
+
+            // Shield bar (out of 100)
+            const shieldPercent = (localPlayer.shield / 100) * 100;
+            document.getElementById('shieldFill').style.width = shieldPercent + '%';
+
+            // Weapon indicator
+            const weaponIcons = { pistol: '🔫', shotgun: '💥', smg: '⚡', sniper: '🎯' };
+            const weaponEl = document.getElementById('weaponName');
+            const weaponIconEl = document.getElementById('weaponIcon');
+            weaponEl.textContent = (localPlayer.weapon || 'pistol').toUpperCase();
+            weaponEl.className = localPlayer.weapon || 'pistol';
+            weaponIconEl.textContent = weaponIcons[localPlayer.weapon] || '🔫';
+
             document.getElementById('myKills').textContent = localPlayer.kills || 0;
             document.getElementById('playerCount').textContent = data.pc;
             document.getElementById('aliveCount').textContent = data.ac;
@@ -535,6 +629,18 @@ function handleMessage(data) {
             isSpectator = false;
             spectateTarget = null;
             pendingInputs.length = 0; // Clear prediction buffer
+
+            // Reset local player for new round
+            localPlayer.health = 150;
+            localPlayer.shield = 0;
+            localPlayer.weapon = 'pistol';
+            localPlayer.alive = true;
+
+            // Update weapon definitions if provided
+            if (data.wp) {
+                WEAPONS = data.wp;
+            }
+
             showCountdown();
             break;
 
@@ -546,6 +652,29 @@ function handleMessage(data) {
 
         case 'as': // arenaShrink
             gameState.arenaSize = data.s;
+            break;
+
+        case 'hit': // Hit event - visual feedback
+            // Screen shake if we got hit
+            if (data.vi === playerId) {
+                addScreenShake(8, 150);
+                addDamageNumber(localPlayer.x, localPlayer.y - 40, data.d);
+            }
+            // Hit marker if we hit someone
+            if (data.ai === playerId) {
+                addHitMarker();
+                addDamageNumber(data.x, data.y - 40, data.d);
+            }
+            // Spawn hit particles
+            particlePool.spawnBurst(data.x, data.y, 6, 3, 300, 4, '#ff6b4a');
+            break;
+
+        case 'lp': // Loot pickup
+            // Particle effect at pickup location
+            if (data.pi === playerId) {
+                const color = LOOT_COLORS[data.lt] || '#ffffff';
+                particlePool.spawnBurst(localPlayer.x, localPlayer.y, 10, 4, 500, 6, color);
+            }
             break;
     }
 }
@@ -1041,26 +1170,43 @@ function drawPlayer(player, x, y, isLocal) {
     ctx.font = '12px Arial, sans-serif';
     ctx.fillText(`${kills} kills`, x, y - radius - 9);
 
-    // Health bar below
-    const healthWidth = 40;
-    const healthHeight = 5;
-    const healthY = y + radius + 8;
+    // Health + Shield bar below
+    const barWidth = 44;
+    const barHeight = 5;
+    const barY = y + radius + 8;
+    const shield = player.shield || player.sh || 0;
 
     // Background
     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
     ctx.beginPath();
-    ctx.roundRect(x - healthWidth / 2 - 1, healthY - 1, healthWidth + 2, healthHeight + 2, 3);
+    ctx.roundRect(x - barWidth / 2 - 1, barY - 1, barWidth + 2, barHeight + 2, 3);
     ctx.fill();
 
-    // Health fill
+    // Health fill (out of 150)
     let healthColor = '#2ecc71';
-    if (health <= 50) healthColor = '#f1c40f';
-    if (health <= 25) healthColor = '#e74c3c';
+    if (health <= 75) healthColor = '#f1c40f';
+    if (health <= 40) healthColor = '#e74c3c';
 
+    const healthPercent = Math.min(1, health / 150);
     ctx.fillStyle = healthColor;
     ctx.beginPath();
-    ctx.roundRect(x - healthWidth / 2, healthY, (health / 100) * healthWidth, healthHeight, 2);
+    ctx.roundRect(x - barWidth / 2, barY, healthPercent * barWidth, barHeight, 2);
     ctx.fill();
+
+    // Shield bar (stacked on top, blue)
+    if (shield > 0) {
+        const shieldY = barY - 6;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.beginPath();
+        ctx.roundRect(x - barWidth / 2 - 1, shieldY - 1, barWidth + 2, 4, 2);
+        ctx.fill();
+
+        const shieldPercent = Math.min(1, shield / 100);
+        ctx.fillStyle = '#3498db';
+        ctx.beginPath();
+        ctx.roundRect(x - barWidth / 2, shieldY, shieldPercent * barWidth, 3, 2);
+        ctx.fill();
+    }
 
     // Self highlight (cyan dashed ring)
     if (isLocal) {
@@ -1112,6 +1258,119 @@ function drawBullets() {
     }
 }
 
+function drawLoot() {
+    for (const item of gameState.loot) {
+        const x = item.x - camera.x;
+        const y = item.y - camera.y;
+
+        // Frustum culling
+        if (x < -30 || x > canvas.width + 30 || y < -30 || y > canvas.height + 30) continue;
+
+        const color = LOOT_COLORS[item.t] || '#ffffff';
+        const isWeapon = ['shotgun', 'smg', 'sniper'].includes(item.t);
+
+        // Pulsing glow effect
+        const pulse = Math.sin(Date.now() / 300 + item.i) * 0.3 + 0.7;
+
+        // Outer glow
+        ctx.globalAlpha = 0.3 * pulse;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, 20, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // Main item circle
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, 14);
+        gradient.addColorStop(0, color);
+        gradient.addColorStop(1, 'rgba(0,0,0,0.5)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, 14, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Border
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, 14, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Icon/symbol in center
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        if (item.t === 'health') {
+            ctx.fillText('+', x, y);
+        } else if (item.t === 'shield') {
+            ctx.fillText('◇', x, y);
+        } else if (isWeapon) {
+            ctx.fillText('⚔', x, y - 1);
+        }
+    }
+}
+
+function drawHitMarkers() {
+    if (hitMarkers.length === 0) return;
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    for (const hm of hitMarkers) {
+        const age = Date.now() - hm.time;
+        const alpha = 1 - (age / 200);
+
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.lineWidth = 3;
+
+        // Draw X hit marker in center of screen
+        const size = 12 + (age / 20);
+        const gap = 6;
+
+        ctx.beginPath();
+        // Top-left to center
+        ctx.moveTo(centerX - size, centerY - size);
+        ctx.lineTo(centerX - gap, centerY - gap);
+        // Top-right to center
+        ctx.moveTo(centerX + size, centerY - size);
+        ctx.lineTo(centerX + gap, centerY - gap);
+        // Bottom-left to center
+        ctx.moveTo(centerX - size, centerY + size);
+        ctx.lineTo(centerX - gap, centerY + gap);
+        // Bottom-right to center
+        ctx.moveTo(centerX + size, centerY + size);
+        ctx.lineTo(centerX + gap, centerY + gap);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+function drawDamageNumbers() {
+    for (const dn of damageNumbers) {
+        const x = dn.x - camera.x;
+        const y = dn.y - camera.y;
+        const age = Date.now() - dn.time;
+        const alpha = Math.max(0, 1 - (age / 1000));
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = dn.color;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        ctx.font = 'bold 18px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Stroke then fill for outline effect
+        ctx.strokeText(`-${dn.damage}`, x, y);
+        ctx.fillText(`-${dn.damage}`, x, y);
+        ctx.restore();
+    }
+}
+
 function drawMinimap() {
     const scale = 150 / ARENA_SIZE;
 
@@ -1132,6 +1391,18 @@ function drawMinimap() {
     minimapCtx.beginPath();
     minimapCtx.arc(75, 75, (gameState.arenaSize / 2) * scale, 0, Math.PI * 2);
     minimapCtx.stroke();
+
+    // Loot (small dots)
+    for (const item of gameState.loot) {
+        const lx = item.x * scale;
+        const ly = item.y * scale;
+        minimapCtx.fillStyle = LOOT_COLORS[item.t] || '#fff';
+        minimapCtx.globalAlpha = 0.7;
+        minimapCtx.beginPath();
+        minimapCtx.arc(lx, ly, 2, 0, Math.PI * 2);
+        minimapCtx.fill();
+    }
+    minimapCtx.globalAlpha = 1;
 
     // Players
     for (const player of gameState.players) {
@@ -1181,14 +1452,33 @@ function gameLoop(currentTime) {
     // Update
     updateLocalPlayer(deltaTime / 1000);
     updateCamera();
+    updateVisualEffects(deltaTime);
     particlePool.update(deltaTime);
+
+    // Apply screen shake to camera
+    let shakeX = 0, shakeY = 0;
+    if (screenShake.intensity > 0) {
+        shakeX = (Math.random() - 0.5) * screenShake.intensity;
+        shakeY = (Math.random() - 0.5) * screenShake.intensity;
+        camera.x += shakeX;
+        camera.y += shakeY;
+    }
 
     // Render
     drawArena();
+    drawLoot();
     drawBullets();
     drawPlayers();
+    drawDamageNumbers();
     particlePool.draw(ctx, camera.x, camera.y);
+    drawHitMarkers();  // Draw on top (screen-space)
     drawMinimap();
+
+    // Restore camera after shake
+    if (shakeX !== 0 || shakeY !== 0) {
+        camera.x -= shakeX;
+        camera.y -= shakeY;
+    }
 
     requestAnimationFrame(gameLoop);
 }

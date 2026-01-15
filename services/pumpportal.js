@@ -1,7 +1,7 @@
 const https = require('https');
 const WebSocket = require('ws');
 const { Connection, Keypair, VersionedTransaction } = require('@solana/web3.js');
-const bs58 = require('bs58');
+const bs58 = require('bs58').default;
 
 const PUMPPORTAL_LOCAL_API_URL = 'https://pumpportal.fun/api/trade-local';
 const PUMPPORTAL_WS_URL = 'wss://pumpportal.fun/api/data';

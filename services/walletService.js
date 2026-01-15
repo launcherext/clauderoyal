@@ -7,7 +7,7 @@ const {
     LAMPORTS_PER_SOL,
     sendAndConfirmTransaction
 } = require('@solana/web3.js');
-const bs58 = require('bs58');
+const bs58 = require('bs58').default;
 
 const HELIUS_RPC = process.env.HELIUS_RPC_URL || `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY || ''}`;
 const connection = new Connection(HELIUS_RPC, 'confirmed');
