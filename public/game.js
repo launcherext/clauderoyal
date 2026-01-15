@@ -359,6 +359,7 @@ let serverTick = 0;
 let lastShootTime = 0;
 const SHOOT_COOLDOWN = 200; // ms
 let currentClaim = null; // Current prize claim info
+let currentClaimToken = null; // Secure claim token (sent only to winner)
 let lastSentAngle = 0; // Throttle angle-only updates
 const ANGLE_THRESHOLD = 0.05; // ~3 degrees before sending angle update
 
@@ -653,8 +654,14 @@ function handleMessage(data) {
 
         case 're': // roundEnd
             currentClaim = data.claim || null;
+            currentClaimToken = null; // Reset token, will be set by 'claimToken' message
             showRoundEnd(data.w, data.wi, data.k, data.r, data.claim);
             if (data.lb) updateLeaderboardUI(data.lb);
+            break;
+
+        case 'claimToken': // Secure claim token (sent only to winner)
+            currentClaimToken = data.token;
+            console.log('Received claim token for round:', data.roundId);
             break;
 
         case 'as': // arenaShrink
@@ -1542,7 +1549,7 @@ document.getElementById('claimBtn').addEventListener('click', async () => {
         return;
     }
 
-    if (!sessionId) {
+    if (!sessionId && !currentClaimToken) {
         showClaimError('Session expired. Please refresh and try again.');
         return;
     }
@@ -1551,10 +1558,18 @@ document.getElementById('claimBtn').addEventListener('click', async () => {
     claimBtn.textContent = 'SUBMITTING...';
 
     try {
+        // Send claim token if available (secure), otherwise fall back to sessionId
+        const claimData = { walletAddress: wallet };
+        if (currentClaimToken) {
+            claimData.claimToken = currentClaimToken;
+        } else {
+            claimData.sessionId = sessionId;
+        }
+
         const response = await fetch('/api/rewards/claim', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId, walletAddress: wallet })
+            body: JSON.stringify(claimData)
         });
 
         const result = await response.json();
