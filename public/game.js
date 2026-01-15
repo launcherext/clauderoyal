@@ -602,8 +602,15 @@ function handleMessage(data) {
             } else if (isSpectator && data.ph === 'active') {
                 const alivePlayers = data.p.filter(p => p.v === 1);
                 showSpectatorOverlay('ROUND IN PROGRESS', `${alivePlayers.length} player${alivePlayers.length !== 1 ? 's' : ''} remaining`);
+                // Set spectate target so camera follows a player
+                if (alivePlayers.length > 0 && !spectateTarget) {
+                    spectateTarget = alivePlayers[0].i;
+                }
             } else if (isSpectator && data.ph === 'waiting') {
                 showSpectatorOverlay('WAITING FOR PLAYERS', `${data.pc || 0} players in lobby`);
+                // Center camera on arena for waiting phase
+                localPlayer.x = ARENA_SIZE / 2;
+                localPlayer.y = ARENA_SIZE / 2;
             } else if (isSpectator && data.ph === 'ended') {
                 showSpectatorOverlay('ROUND ENDED', 'Next round starting soon');
             } else {
