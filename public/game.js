@@ -385,19 +385,19 @@ const pendingInputs = []; // Inputs sent but not yet acknowledged
 const movement = {
     vx: 0,              // Current velocity X
     vy: 0,              // Current velocity Y
-    acceleration: 0.8,  // How fast we reach max speed (0-1, higher = snappier)
-    friction: 0.85,     // How fast we slow down (0-1, higher = more slide)
+    acceleration: 1.2,  // Snappy acceleration (higher = more responsive)
+    friction: 0.82,     // Quick stop (lower = less slide, more control)
     maxSpeed: 5,        // Max movement speed
 
     // Visual recoil
     recoilX: 0,
     recoilY: 0,
-    recoilDecay: 0.85,
+    recoilDecay: 0.8,
 
-    // Aim smoothing
+    // Aim smoothing (lower = more responsive)
     targetAngle: 0,
     currentAngle: 0,
-    aimSmoothing: 0.35, // 0 = no smoothing, 1 = very smooth (laggy)
+    aimSmoothing: 0.15, // Very responsive aim
 };
 
 function processLocalInput(keys, dt) {
@@ -1262,42 +1262,31 @@ function updateLocalPlayer(dt) {
         localPlayer.y += movement.recoilY;
     }
 
-    // Send to server if we're moving or recently moved
-    const isMoving = Math.abs(movement.vx) > 0.1 || Math.abs(movement.vy) > 0.1;
-    if (isMoving) {
-        inputSequence++;
-        const inputData = {
-            t: 'm',
-            x: localPlayer.x,
-            y: localPlayer.y,
-            a: localPlayer.angle,
-            seq: inputSequence
-        };
-
-        pendingInputs.push({ seq: inputSequence, dx: input.dx, dy: input.dy });
-
-        if (ws && ws.readyState === 1) {
-            ws.send(JSON.stringify(inputData));
-        }
-    }
-
-    // SECRET SAUCE: Smooth aim with slight lag (reduces jitter, feels pro)
+    // Smooth aim
     const screenX = localPlayer.x - camera.x;
     const screenY = localPlayer.y - camera.y;
     movement.targetAngle = Math.atan2(mouseY - screenY, mouseX - screenX);
-
-    // Smoothly interpolate toward target angle
     localPlayer.angle = lerpAngle(localPlayer.angle, movement.targetAngle, 1 - movement.aimSmoothing);
 
-    // Only send angle update if it changed significantly
+    // NETWORK OPTIMIZATION: Throttle updates to ~20/sec max (every 50ms)
+    const now = Date.now();
+    const timeSinceLastSend = now - (localPlayer.lastNetworkSend || 0);
+    const isMoving = Math.abs(movement.vx) > 0.1 || Math.abs(movement.vy) > 0.1;
     const angleDiff = Math.abs(localPlayer.angle - lastSentAngle);
-    if (angleDiff > ANGLE_THRESHOLD && ws && ws.readyState === 1) {
+    const needsUpdate = isMoving || angleDiff > ANGLE_THRESHOLD;
+
+    if (needsUpdate && timeSinceLastSend > 50 && ws && ws.readyState === 1) {
+        localPlayer.lastNetworkSend = now;
+        inputSequence++;
         lastSentAngle = localPlayer.angle;
+
+        pendingInputs.push({ seq: inputSequence, dx: input.dx, dy: input.dy });
+
         ws.send(JSON.stringify({
             t: 'm',
-            x: localPlayer.x,
-            y: localPlayer.y,
-            a: localPlayer.angle,
+            x: Math.round(localPlayer.x * 10) / 10, // Reduce precision
+            y: Math.round(localPlayer.y * 10) / 10,
+            a: Math.round(localPlayer.angle * 100) / 100,
             seq: inputSequence
         }));
     }
@@ -1316,9 +1305,9 @@ function updateLocalPlayer(dt) {
 // SECRET SAUCE: CAMERA LEAD + DEADZONE
 // ============================================================================
 const cameraConfig = {
-    leadAmount: 80,      // How far camera leads in movement direction
-    leadSmoothing: 0.05, // How smoothly camera catches up
-    baseSmoothing: 0.12, // Base camera smoothing
+    leadAmount: 50,      // Subtle camera lead
+    leadSmoothing: 0.08, // Responsive lead
+    baseSmoothing: 0.18, // Snappier camera follow
     currentLead: { x: 0, y: 0 }
 };
 
@@ -1926,7 +1915,6 @@ function gameLoop(currentTime) {
     drawDamageNumbers();
     particlePool.draw(ctx, camera.x, camera.y);
     drawHitMarkers();  // Draw on top (screen-space)
-    drawCrosshair();   // Draw crosshair
     drawScreenFlash(); // Kill confirmation flash
     drawLowHealthVignette(); // Low health screen effect
     drawMinimap();
