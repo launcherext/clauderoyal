@@ -6,12 +6,21 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d', { alpha: false });
 const minimap = document.getElementById('minimap');
-const minimapCtx = minimap.getContext('2d');
+const minimapCtx = minimap.getContext('2d', { alpha: false }); // alpha:false = free GPU perf
 
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 minimap.width = 150;
 minimap.height = 150;
+
+// ============================================================================
+// SECURITY - HTML ESCAPING
+// ============================================================================
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
 // ============================================================================
 // CONSTANTS
@@ -350,6 +359,8 @@ let serverTick = 0;
 let lastShootTime = 0;
 const SHOOT_COOLDOWN = 200; // ms
 let currentClaim = null; // Current prize claim info
+let lastSentAngle = 0; // Throttle angle-only updates
+const ANGLE_THRESHOLD = 0.05; // ~3 degrees before sending angle update
 
 let gameState = {
     players: [],
@@ -646,7 +657,7 @@ function updateLobby(nextRoundIn, lobbyPlayers, phase, playerCount, aliveCount) 
             const dotColor = isAlive ? '#2ecc71' : '#666';
             const nameColor = isMe ? '#00e5ff' : (isAlive ? '#fff' : '#888');
             const fontWeight = isMe ? 'bold' : 'normal';
-            return `<div class="lobby-player" style="color: ${nameColor}; font-weight: ${fontWeight};"><span style="color: ${dotColor};">●</span> ${p.n}${isMe ? ' (you)' : ''}</div>`;
+            return `<div class="lobby-player" style="color: ${nameColor}; font-weight: ${fontWeight};"><span style="color: ${dotColor};">●</span> ${escapeHtml(p.n)}${isMe ? ' (you)' : ''}</div>`;
         }).join('');
 
         playerListEl.innerHTML = playerList;
@@ -666,7 +677,7 @@ function updateLeaderboardUI(leaderboard) {
     const container = document.getElementById('lbEntries');
     container.innerHTML = leaderboard.map((entry, i) => `
         <div class="lb-entry ${entry.name === playerName ? 'highlight' : ''}">
-            <span class="name">${i + 1}. ${entry.name}</span>
+            <span class="name">${i + 1}. ${escapeHtml(entry.name)}</span>
             <span class="stats">${entry.wins}W / ${entry.kills}K</span>
         </div>
     `).join('');
@@ -675,7 +686,7 @@ function updateLeaderboardUI(leaderboard) {
 function updateRecentWinnersUI(winners) {
     const container = document.getElementById('winnerEntries');
     container.innerHTML = winners.map(w => `
-        <div class="winner-entry">R${w.round || '?'}: ${w.name} (${w.kills}K)</div>
+        <div class="winner-entry">R${w.round || '?'}: ${escapeHtml(w.name)} (${w.kills}K)</div>
     `).join('');
 }
 
@@ -685,7 +696,7 @@ function addClaudeMessage(message) {
     msg.className = 'claude-msg';
     msg.innerHTML = `
         <div class="speaker">CLAUDE</div>
-        <div class="text">${message}</div>
+        <div class="text">${escapeHtml(message)}</div>
     `;
     container.appendChild(msg);
     container.scrollTop = container.scrollHeight;
@@ -701,7 +712,7 @@ function addKillFeed(killer, victim) {
     const container = document.getElementById('killFeed');
     const entry = document.createElement('div');
     entry.className = 'kill-entry';
-    entry.innerHTML = `<span class="killer">${killer}</span> eliminated <span class="victim">${victim}</span>`;
+    entry.innerHTML = `<span class="killer">${escapeHtml(killer)}</span> eliminated <span class="victim">${escapeHtml(victim)}</span>`;
     container.appendChild(entry);
 
     while (container.children.length > 5) {
@@ -795,8 +806,10 @@ function updateLocalPlayer(dt) {
     const screenY = localPlayer.y - camera.y;
     localPlayer.angle = Math.atan2(mouseY - screenY, mouseX - screenX);
 
-    // Send angle update
-    if (ws && ws.readyState === 1) {
+    // Only send angle update if it changed significantly (throttle to reduce bandwidth)
+    const angleDiff = Math.abs(localPlayer.angle - lastSentAngle);
+    if (angleDiff > ANGLE_THRESHOLD && ws && ws.readyState === 1) {
+        lastSentAngle = localPlayer.angle;
         ws.send(JSON.stringify({
             t: 'm',
             x: localPlayer.x,
@@ -1296,11 +1309,13 @@ function updateTokenDisplay(data) {
 
     const token = data.token;
     const prizePool = data.prizePool || 0;
+    const safeSymbol = escapeHtml(token.symbol || 'CROYALE');
+    const safeImageUrl = token.image_url && /^https?:\/\//i.test(token.image_url) ? token.image_url : '';
 
     tokenInfoEl.innerHTML = `
         <div class="token-header">
-            ${token.image_url ? `<img src="${token.image_url}" alt="${token.symbol}" class="token-icon">` : ''}
-            <span class="token-name">${token.symbol || 'CROYALE'}</span>
+            ${safeImageUrl ? `<img src="${escapeHtml(safeImageUrl)}" alt="${safeSymbol}" class="token-icon">` : ''}
+            <span class="token-name">${safeSymbol}</span>
         </div>
         <div class="prize-pool">Prize Pool: ${parseFloat(prizePool).toFixed(4)} SOL</div>
     `;

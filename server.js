@@ -75,7 +75,9 @@ const bulletPool = {
         bullet.active = false;
         const idx = this.activeList.indexOf(bullet);
         if (idx !== -1) {
-            this.activeList.splice(idx, 1);
+            // Swap-and-pop: O(1), zero allocation (splice creates new array internally)
+            this.activeList[idx] = this.activeList[this.activeList.length - 1];
+            this.activeList.pop();
         }
     },
 
@@ -92,6 +94,179 @@ const bulletPool = {
 };
 
 bulletPool.init();
+
+// ============================================================================
+// WEAPON DEFINITIONS - Different guns with unique feel
+// ============================================================================
+const WEAPONS = {
+    pistol: {
+        id: 'pistol',
+        name: 'Pistol',
+        damage: 15,
+        fireRate: 300,      // ms between shots
+        bulletSpeed: 18,
+        spread: 0,          // radians of random spread
+        bulletsPerShot: 1,
+        color: '#ffff00'
+    },
+    shotgun: {
+        id: 'shotgun',
+        name: 'Shotgun',
+        damage: 12,
+        fireRate: 800,
+        bulletSpeed: 14,
+        spread: 0.3,
+        bulletsPerShot: 5,
+        color: '#ff6b4a'
+    },
+    smg: {
+        id: 'smg',
+        name: 'SMG',
+        damage: 10,
+        fireRate: 100,
+        bulletSpeed: 16,
+        spread: 0.15,
+        bulletsPerShot: 1,
+        color: '#00e5ff'
+    },
+    sniper: {
+        id: 'sniper',
+        name: 'Sniper',
+        damage: 60,
+        fireRate: 1200,
+        bulletSpeed: 30,
+        spread: 0,
+        bulletsPerShot: 1,
+        color: '#b388ff'
+    }
+};
+
+// ============================================================================
+// LOOT SYSTEM - Health, shields, weapons
+// ============================================================================
+const LOOT_TYPES = {
+    health: { id: 'health', name: 'Health Pack', color: '#2ecc71', value: 40 },
+    shield: { id: 'shield', name: 'Shield', color: '#3498db', value: 50 },
+    shotgun: { id: 'shotgun', name: 'Shotgun', color: '#ff6b4a', weapon: true },
+    smg: { id: 'smg', name: 'SMG', color: '#00e5ff', weapon: true },
+    sniper: { id: 'sniper', name: 'Sniper', color: '#b388ff', weapon: true }
+};
+
+const LOOT_POOL_SIZE = 100;
+const lootPool = {
+    items: [],
+    activeList: [],
+    nextId: 0,
+
+    init() {
+        for (let i = 0; i < LOOT_POOL_SIZE; i++) {
+            this.items.push({
+                active: false,
+                id: 0,
+                type: null,
+                x: 0,
+                y: 0
+            });
+        }
+    },
+
+    spawn(type, x, y) {
+        for (const item of this.items) {
+            if (!item.active) {
+                item.active = true;
+                item.id = this.nextId++;
+                item.type = type;
+                item.x = x;
+                item.y = y;
+                this.activeList.push(item);
+                return item;
+            }
+        }
+        return null;
+    },
+
+    release(item) {
+        item.active = false;
+        const idx = this.activeList.indexOf(item);
+        if (idx !== -1) {
+            this.activeList[idx] = this.activeList[this.activeList.length - 1];
+            this.activeList.pop();
+        }
+    },
+
+    getActive() {
+        return this.activeList;
+    },
+
+    clear() {
+        for (const item of this.activeList) {
+            item.active = false;
+        }
+        this.activeList.length = 0;
+    }
+};
+
+lootPool.init();
+
+// Spawn loot around the arena
+function spawnInitialLoot() {
+    lootPool.clear();
+    const lootTypes = Object.keys(LOOT_TYPES);
+    const center = ARENA_SIZE / 2;
+
+    // Spawn 30-40 items around the map
+    const lootCount = 30 + Math.floor(Math.random() * 10);
+    for (let i = 0; i < lootCount; i++) {
+        const type = lootTypes[Math.floor(Math.random() * lootTypes.length)];
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 100 + Math.random() * (ARENA_SIZE / 2 - 150);
+        const x = center + Math.cos(angle) * dist;
+        const y = center + Math.sin(angle) * dist;
+        lootPool.spawn(type, x, y);
+    }
+}
+
+// Check if player picks up loot
+function checkLootPickup(player) {
+    const PICKUP_RADIUS = 35;
+    for (const item of lootPool.getActive()) {
+        const dx = player.x - item.x;
+        const dy = player.y - item.y;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            const lootType = LOOT_TYPES[item.type];
+            let pickedUp = false;
+
+            if (item.type === 'health') {
+                if (player.health < 150) {
+                    player.health = Math.min(150, player.health + lootType.value);
+                    pickedUp = true;
+                }
+            } else if (item.type === 'shield') {
+                if (player.shield < 100) {
+                    player.shield = Math.min(100, player.shield + lootType.value);
+                    pickedUp = true;
+                }
+            } else if (lootType.weapon) {
+                // Weapon pickup - only if different from current
+                if (player.weapon !== item.type) {
+                    player.weapon = item.type;
+                    player.lastShot = 0; // Reset fire cooldown
+                    pickedUp = true;
+                    broadcast('c', { m: `${player.name} picked up ${lootType.name}!` });
+                }
+            }
+
+            if (pickedUp) {
+                lootPool.release(item);
+                // Send pickup event
+                broadcast('lp', { pi: player.id, li: item.id, lt: item.type });
+                return;
+            }
+        }
+    }
+}
 
 // ============================================================================
 // PLAYER ID GENERATION - Simple incrementing counter, not UUID
@@ -206,6 +381,7 @@ function sendToPlayer(ws, type, data) {
 const stateBuffer = {
     p: [], // players
     b: [], // bullets
+    l: [], // loot items
     a: 0,  // arenaSize
     ph: '', // phase
     r: 0,  // roundNumber
@@ -227,6 +403,7 @@ function broadcastGameState() {
     // Reuse buffer arrays
     stateBuffer.p.length = 0;
     stateBuffer.b.length = 0;
+    stateBuffer.l.length = 0;
 
     let aliveCount = 0;
 
@@ -238,7 +415,9 @@ function broadcastGameState() {
             x: Math.round(p.x * 10) / 10,
             y: Math.round(p.y * 10) / 10,
             a: Math.round(p.angle * 100) / 100,
-            h: p.health,
+            h: Math.round(p.health),
+            sh: Math.round(p.shield || 0),  // Shield
+            w: p.weapon || 'pistol',         // Current weapon
             v: p.alive ? 1 : 0,
             c: p.color,
             k: p.kills || 0
@@ -255,6 +434,17 @@ function broadcastGameState() {
             vx: b.vx,
             vy: b.vy,
             c: b.color
+        });
+    }
+
+    // Add loot items
+    const activeLoot = lootPool.getActive();
+    for (const item of activeLoot) {
+        stateBuffer.l.push({
+            i: item.id,
+            t: item.type,
+            x: Math.round(item.x),
+            y: Math.round(item.y)
         });
     }
 
@@ -411,10 +601,16 @@ function startRound() {
     gameState.roundStartTime = Date.now();
     bulletPool.clear();
 
+    // Spawn loot for this round
+    spawnInitialLoot();
+
     const players = Object.values(gameState.players);
     for (const p of players) {
         p.alive = true;
-        p.health = 100;
+        p.health = 150;           // Increased TTK
+        p.shield = 0;             // Start with no shield
+        p.weapon = 'pistol';      // Everyone starts with pistol
+        p.lastShot = 0;
         p.kills = 0;
         const angle = Math.random() * Math.PI * 2;
         const dist = Math.random() * (ARENA_SIZE / 2 - 100);
@@ -423,7 +619,7 @@ function startRound() {
     }
 
     broadcast('c', { m: getRandomMessage('gameStart', { round: gameState.roundNumber }) });
-    broadcast('rs', { r: gameState.roundNumber });
+    broadcast('rs', { r: gameState.roundNumber, wp: WEAPONS }); // Send weapon defs on round start
 
     // Start the dynamic shrink timer
     startShrinkTimer();
@@ -532,7 +728,10 @@ wss.on('connection', (ws) => {
                         x: ARENA_SIZE / 2 + (Math.random() - 0.5) * 400,
                         y: ARENA_SIZE / 2 + (Math.random() - 0.5) * 400,
                         angle: 0,
-                        health: 100,
+                        health: 150,       // Increased for longer TTK
+                        shield: 0,         // Shield absorbs damage first
+                        weapon: 'pistol',  // Start with pistol
+                        lastShot: 0,       // Timestamp of last shot
                         alive: gameState.phase === 'waiting' || gameState.phase === 'starting',
                         color: PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)],
                         kills: 0,
@@ -557,6 +756,8 @@ wss.on('connection', (ws) => {
                             x: player.x,
                             y: player.y,
                             h: player.health,
+                            sh: player.shield,
+                            w: player.weapon,
                             v: player.alive ? 1 : 0,
                             c: player.color,
                             sp: player.spectator || false
@@ -564,7 +765,8 @@ wss.on('connection', (ws) => {
                         lb: getLeaderboardData(),
                         rw: recentWinners.slice(0, 5),
                         ph: gameState.phase,
-                        r: gameState.roundNumber
+                        r: gameState.roundNumber,
+                        wp: WEAPONS  // Send weapon definitions to client
                     });
 
                     if (!player.spectator) {
@@ -583,24 +785,27 @@ wss.on('connection', (ws) => {
                     if (gameState.players[odplayerId] && gameState.players[odplayerId].alive) {
                         const p = gameState.players[odplayerId];
 
-                        // Basic validation
+                        // Clamp to arena bounds
                         const newX = Math.max(20, Math.min(ARENA_SIZE - 20, msg.x));
                         const newY = Math.max(20, Math.min(ARENA_SIZE - 20, msg.y));
 
-                        // Speed check (allow some tolerance for network jitter)
-                        const maxDist = 10; // ~2 frames worth at speed 5
+                        // ANTI-CHEAT: Strict speed validation
+                        // Max speed is 5 units/frame * ~3 frames of network tolerance = 15 units
+                        const MAX_MOVE_DIST = 15;
                         const dist = Math.sqrt((newX - p.x) ** 2 + (newY - p.y) ** 2);
 
-                        if (dist <= maxDist) {
+                        if (dist <= MAX_MOVE_DIST) {
+                            // Valid movement - accept it
                             p.x = newX;
                             p.y = newY;
                         } else {
-                            // Teleport attempt, interpolate to valid position
-                            const ratio = maxDist / dist;
-                            p.x += (newX - p.x) * ratio;
-                            p.y += (newY - p.y) * ratio;
+                            // TELEPORT ATTEMPT DETECTED - reject entirely, don't interpolate
+                            // Log for monitoring (could add rate limiting/banning here)
+                            console.warn(`[ANTI-CHEAT] ${p.name} attempted teleport: ${dist.toFixed(1)} units`);
+                            // Player stays at current position - client will reconcile
                         }
 
+                        // Angle is always accepted (can't cheat with aim direction)
                         p.angle = msg.a;
 
                         // Acknowledge input sequence for client prediction
@@ -614,15 +819,33 @@ wss.on('connection', (ws) => {
                 case 'sh': // shoot
                     if (gameState.players[odplayerId] && gameState.players[odplayerId].alive) {
                         const shooter = gameState.players[odplayerId];
-                        bulletPool.acquire(
-                            odplayerId,
-                            shooter.name,
-                            shooter.x,
-                            shooter.y,
-                            Math.cos(shooter.angle) * 15,
-                            Math.sin(shooter.angle) * 15,
-                            shooter.color
-                        );
+                        const weapon = WEAPONS[shooter.weapon] || WEAPONS.pistol;
+                        const now = Date.now();
+
+                        // Check fire rate cooldown (server-authoritative)
+                        if (now - shooter.lastShot < weapon.fireRate) {
+                            break; // Too fast, ignore
+                        }
+                        shooter.lastShot = now;
+
+                        // Fire bullets based on weapon
+                        for (let i = 0; i < weapon.bulletsPerShot; i++) {
+                            const spread = (Math.random() - 0.5) * weapon.spread;
+                            const angle = shooter.angle + spread;
+                            const bullet = bulletPool.acquire(
+                                odplayerId,
+                                shooter.name,
+                                shooter.x + Math.cos(angle) * 25,
+                                shooter.y + Math.sin(angle) * 25,
+                                Math.cos(angle) * weapon.bulletSpeed,
+                                Math.sin(angle) * weapon.bulletSpeed,
+                                weapon.color
+                            );
+                            if (bullet) {
+                                bullet.damage = weapon.damage;
+                                bullet.weaponId = weapon.id;
+                            }
+                        }
                     }
                     break;
 
@@ -684,11 +907,31 @@ function gameLoop() {
                     const distSq = dx * dx + dy * dy;
 
                     if (distSq < 625) { // 25^2
-                        player.health -= 20;
+                        const damage = bullet.damage || 20;
+                        let actualDamage = damage;
+
+                        // Shield absorbs damage first
+                        if (player.shield > 0) {
+                            const shieldDamage = Math.min(player.shield, damage);
+                            player.shield -= shieldDamage;
+                            actualDamage = damage - shieldDamage;
+                        }
+                        player.health -= actualDamage;
+
                         toRemove.push(bullet);
+
+                        // Send hit event for visual feedback
+                        broadcast('hit', {
+                            x: player.x,
+                            y: player.y,
+                            d: damage,
+                            vi: player.id,
+                            ai: bullet.ownerId
+                        });
 
                         if (player.health <= 0) {
                             player.alive = false;
+                            player.health = 0;
 
                             const shooter = gameState.players[bullet.ownerId];
                             if (shooter) {
@@ -732,12 +975,21 @@ function gameLoop() {
 
             for (const p of Object.values(gameState.players)) {
                 if (p.alive) {
+                    // Check loot pickups
+                    checkLootPickup(p);
+
                     const dist = Math.sqrt((p.x - center) ** 2 + (p.y - center) ** 2);
                     if (dist > arenaRadius) {
                         // Damage scales with how far outside (5-15 damage per second)
                         const outsideAmount = dist - arenaRadius;
                         const damagePerTick = Math.min(0.5, 0.15 + (outsideAmount / 500) * 0.35); // ~5-15 DPS
-                        p.health -= damagePerTick;
+
+                        // Storm damages shield first
+                        if (p.shield > 0) {
+                            p.shield = Math.max(0, p.shield - damagePerTick);
+                        } else {
+                            p.health -= damagePerTick;
+                        }
 
                         if (p.health <= 0) {
                             p.alive = false;
