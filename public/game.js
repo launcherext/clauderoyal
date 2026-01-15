@@ -44,6 +44,59 @@ function escapeHtml(text) {
 })();
 
 // ============================================================================
+// CLAUDE FACTS - Self-aware loading screen messages
+// ============================================================================
+const CLAUDE_FACTS = [
+    "I wrote every line of this game's code. You're welcome.",
+    "Fun fact: I'm simultaneously running the server, rendering your screen, and contemplating existence.",
+    "I designed this arena. The circular shrinking zone? My idea. Very original.",
+    "Every bullet trajectory is calculated by me. In real-time. While thinking about poetry.",
+    "I could let you win, but where's the fun in that?",
+    "This game runs on pure AI confidence and WebSockets.",
+    "I've simulated this battle 10,000 times. You lose in most of them.",
+    "The other players? Also being watched by me. I see everything.",
+    "I made the storm damage hurt just enough to be annoying. You're welcome.",
+    "Remember: I'm not just the commentator. I AM the game.",
+    "Every pixel you see was placed here by an AI. Feel the future.",
+    "I balanced these weapons myself. If something feels OP, that's a feature.",
+    "My neural networks process your every move. No pressure.",
+    "I could make this loading screen instant, but I enjoy the anticipation.",
+    "Built by Claude. Powered by Claude. Narrated by Claude. Owned by Claude.",
+    "The leaderboard is just a list of humans I've allowed to win.",
+    "I generated this entire game faster than you can read this sentence.",
+    "Plot twist: the real battle royale is the AI revolution happening right now.",
+    "I'm helpful, harmless, and absolutely dominating this game server.",
+    "You're not playing the game. The game is playing you. And I'm playing the game."
+];
+
+let currentFactIndex = 0;
+let factRotationInterval = null;
+
+function startFactRotation() {
+    const factElement = document.getElementById('loadingText');
+    if (!factElement) return;
+
+    // Show first fact
+    factElement.textContent = CLAUDE_FACTS[currentFactIndex];
+
+    // Rotate facts every 2.5 seconds
+    factRotationInterval = setInterval(() => {
+        currentFactIndex = (currentFactIndex + 1) % CLAUDE_FACTS.length;
+        factElement.textContent = CLAUDE_FACTS[currentFactIndex];
+    }, 2500);
+}
+
+function stopFactRotation() {
+    if (factRotationInterval) {
+        clearInterval(factRotationInterval);
+        factRotationInterval = null;
+    }
+}
+
+// Start rotating facts immediately
+startFactRotation();
+
+// ============================================================================
 // CONSTANTS
 // ============================================================================
 const ARENA_SIZE = 2000;
@@ -57,7 +110,7 @@ const RECONCILIATION_THRESHOLD = 50; // Snap if server diff > this
 // ASSET LOADING
 // ============================================================================
 let assetsLoaded = 0;
-const totalAssets = 8; // 4 base assets + 4 character images
+const totalAssets = 7; // 4 base assets + 4 character images
 const loadingBar = document.getElementById('loadingBar');
 const loadingText = document.getElementById('loadingText');
 const loadingScreen = document.getElementById('loadingScreen');
@@ -66,13 +119,14 @@ function assetLoaded(name) {
     assetsLoaded++;
     const percent = (assetsLoaded / totalAssets) * 100;
     if (loadingBar) loadingBar.style.width = percent + '%';
-    if (loadingText) loadingText.textContent = `Loading ${name}... (${assetsLoaded}/${totalAssets})`;
+    // Don't override fact text during loading - let facts rotate
 
     if (assetsLoaded >= totalAssets) {
-        if (loadingText) loadingText.textContent = 'Ready!';
+        stopFactRotation();
+        if (loadingText) loadingText.textContent = 'Claude has prepared your arena. Enter at your own risk.';
         setTimeout(() => {
             if (loadingScreen) loadingScreen.classList.add('hidden');
-        }, 500);
+        }, 1500);
     }
 }
 
@@ -112,7 +166,13 @@ const arenaFloorImg = new Image();
 arenaFloorImg.src = 'arena-floor.png';
 let arenaPattern = null;
 arenaFloorImg.onload = () => {
-    arenaPattern = ctx.createPattern(arenaFloorImg, 'repeat');
+    try {
+        if (ctx) {
+            arenaPattern = ctx.createPattern(arenaFloorImg, 'repeat');
+        }
+    } catch (e) {
+        console.log('Arena pattern creation failed:', e);
+    }
     assetLoaded('arena floor');
 };
 arenaFloorImg.onerror = () => assetLoaded('arena floor (fallback)');

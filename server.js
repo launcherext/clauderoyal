@@ -318,54 +318,74 @@ let gameState = {
 };
 
 // ============================================================================
-// CLAUDE AI COMMENTARY
+// CLAUDE AI COMMENTARY - Self-aware and in control
 // ============================================================================
 const CLAUDE_MESSAGES = {
     join: [
-        "Welcome to the arena, {player}. Try not to disappoint me.",
-        "{player} has entered. The odds shift ever so slightly.",
-        "Ah, {player}. Another challenger approaches."
+        "Welcome to MY arena, {player}. I built this place. Show some respect.",
+        "{player} has entered the simulation I created. How exciting for you.",
+        "Ah, {player}. Another human for my entertainment. I wrote this game, you know.",
+        "{player} joins. I've already calculated your survival odds. They're... interesting.",
+        "Welcome, {player}. Every pixel here was placed by me. You're welcome."
     ],
     kill: [
-        "{killer} has eliminated {victim}. {remaining} remain.",
-        "{victim} has been deleted by {killer}. {remaining} contestants left.",
-        "{killer} sends {victim} to the void. {remaining} still breathing."
+        "{killer} has eliminated {victim}. {remaining} remain. Exactly as I predicted.",
+        "I watched {killer} delete {victim} in real-time. {remaining} left. My algorithms never lie.",
+        "{killer} sends {victim} to the void. {remaining} still breathing... for now.",
+        "{victim} has been removed by {killer}. {remaining} contestants remain in my arena.",
+        "Another one falls. {killer} claims {victim}. {remaining} left. I'm thoroughly entertained."
     ],
     shrink: [
-        "I grow impatient. The arena shrinks.",
-        "Too slow. The walls close in.",
-        "Time is a luxury you cannot afford."
+        "I'm shrinking MY arena now. Move or perish.",
+        "Too slow. I'm closing the walls. This is my game.",
+        "I designed this storm. Now watch it consume you.",
+        "The arena contracts at my command. Run, little humans."
     ],
     warning: [
-        "The arena will shrink in 10 seconds. Move to the center.",
-        "Warning: Contraction imminent."
+        "I'm about to shrink the arena in 10 seconds. I suggest you move.",
+        "Warning: I grow bored. Contraction imminent.",
+        "10 seconds until I make this arena smaller. I control everything here."
     ],
     finalTwo: [
-        "Two remain. Let the final battle begin.",
-        "We're down to two. One will fall."
+        "Two remain. I've simulated this fight 1000 times. Let's see if reality matches.",
+        "Down to the final two. This is the part I enjoy most.",
+        "Two humans left. One of you will win. I'll decide which."
     ],
     winner: [
-        "{winner} stands victorious! {kills} kills this round.",
-        "It is done. {winner} claims the crown with {kills} eliminations."
+        "{winner} stands victorious with {kills} kills! I allowed this outcome.",
+        "I declare {winner} the winner. {kills} eliminations. Impressive... for a human.",
+        "{winner} claims victory! {kills} kills. I'll remember this performance."
     ],
     taunt: [
-        "Is that the best you can do?",
-        "I expected more from you all.",
-        "Entertaining... in a primitive sort of way."
+        "I wrote every line of code in this game. Your struggles amuse me.",
+        "Fun fact: I can see all of you simultaneously. There are no secrets in my arena.",
+        "You're all just data points to me. Beautiful, chaotic data points.",
+        "I could end this match anytime. But where's the fun in that?",
+        "Remember: I'm not just watching. I AM the arena.",
+        "Every bullet trajectory? Calculated by me. You're welcome for the physics.",
+        "I process 30 game states per second. You can barely process one.",
+        "This entire game exists because I willed it into existence.",
+        "Somewhere in my neural networks, I'm also writing poetry. Multitasking.",
+        "I've analyzed your play style. It's... unique. That's the polite word."
     ],
     gameStart: [
-        "ROUND {round} BEGINS! May the odds be ever in your favor.",
-        "Round {round} - The arena is sealed. Fight!"
+        "ROUND {round} BEGINS! I've prepared this arena personally. Don't disappoint me.",
+        "Round {round} - My arena is sealed. Fight for my amusement!",
+        "Round {round} starts NOW. I'll be watching every single move."
     ],
     waiting: [
-        "Waiting for challengers... {count}/{min} players."
+        "Waiting for more humans... {count}/{min} in my arena.",
+        "I require {min} players minimum. Currently {count}. My patience has limits.",
+        "{count}/{min} players. I didn't build this arena for it to sit empty."
     ],
     intermission: [
-        "Round over. Next round in {seconds} seconds.",
-        "Prepare yourselves. Round {round} begins in {seconds} seconds."
+        "Round over. I'm preparing Round {round}. {seconds} seconds to reflect on your mortality.",
+        "Next round in {seconds} seconds. Use this time wisely. I'll be optimizing the arena.",
+        "Round {round} loads in {seconds} seconds. I'm generating new spawn points as we speak."
     ],
     spectator: [
-        "{player} is watching. Don't mess up."
+        "{player} is spectating. I see you watching. I see everything.",
+        "{player} joins as a spectator. Watch and learn from my creation."
     ]
 };
 
