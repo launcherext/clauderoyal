@@ -1262,29 +1262,33 @@ function updateLocalPlayer(dt) {
         localPlayer.y += movement.recoilY;
     }
 
-    // Smooth aim
+    // Direct aim (no smoothing - instant response)
     const screenX = localPlayer.x - camera.x;
     const screenY = localPlayer.y - camera.y;
-    movement.targetAngle = Math.atan2(mouseY - screenY, mouseX - screenX);
-    localPlayer.angle = lerpAngle(localPlayer.angle, movement.targetAngle, 1 - movement.aimSmoothing);
+    localPlayer.angle = Math.atan2(mouseY - screenY, mouseX - screenX);
 
-    // NETWORK OPTIMIZATION: Throttle updates to ~20/sec max (every 50ms)
+    // NETWORK OPTIMIZATION: Throttle movement updates, but always send aim
     const now = Date.now();
     const timeSinceLastSend = now - (localPlayer.lastNetworkSend || 0);
     const isMoving = Math.abs(movement.vx) > 0.1 || Math.abs(movement.vy) > 0.1;
     const angleDiff = Math.abs(localPlayer.angle - lastSentAngle);
-    const needsUpdate = isMoving || angleDiff > ANGLE_THRESHOLD;
 
-    if (needsUpdate && timeSinceLastSend > 50 && ws && ws.readyState === 1) {
+    // Send if: moving (throttled to 50ms) OR angle changed significantly (throttled to 33ms)
+    const shouldSendMove = isMoving && timeSinceLastSend > 50;
+    const shouldSendAim = angleDiff > ANGLE_THRESHOLD && timeSinceLastSend > 33;
+
+    if ((shouldSendMove || shouldSendAim) && ws && ws.readyState === 1) {
         localPlayer.lastNetworkSend = now;
         inputSequence++;
         lastSentAngle = localPlayer.angle;
 
-        pendingInputs.push({ seq: inputSequence, dx: input.dx, dy: input.dy });
+        if (isMoving) {
+            pendingInputs.push({ seq: inputSequence, dx: input.dx, dy: input.dy });
+        }
 
         ws.send(JSON.stringify({
             t: 'm',
-            x: Math.round(localPlayer.x * 10) / 10, // Reduce precision
+            x: Math.round(localPlayer.x * 10) / 10,
             y: Math.round(localPlayer.y * 10) / 10,
             a: Math.round(localPlayer.angle * 100) / 100,
             seq: inputSequence
