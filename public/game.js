@@ -532,21 +532,21 @@ function reconcileWithServer(serverX, serverY, serverSeq) {
         pendingInputs.shift();
     }
 
-    // Check if reconciliation needed
+    // Check distance between client prediction and server state
     const dist = Math.sqrt((localPlayer.x - serverX) ** 2 + (localPlayer.y - serverY) ** 2);
 
+    // ONLY reconcile if there's significant divergence
+    // Small differences = trust client prediction (smoother feel)
     if (dist > RECONCILIATION_THRESHOLD) {
-        // Snap to server position
-        localPlayer.x = serverX;
-        localPlayer.y = serverY;
-    } else {
-        // Re-apply unacknowledged inputs
+        // Large divergence: snap to server and re-apply pending inputs
         localPlayer.x = serverX;
         localPlayer.y = serverY;
         for (const input of pendingInputs) {
             applyInput(localPlayer, input);
         }
     }
+    // If dist <= threshold, do NOTHING - trust client prediction
+    // This is the key to smooth movement!
 }
 
 // ============================================================================
@@ -1347,16 +1347,16 @@ function updateLocalPlayer(dt) {
     const screenY = localPlayer.y - camera.y;
     localPlayer.angle = Math.atan2(mouseY - screenY, mouseX - screenX);
 
-    // NETWORK OPTIMIZATION: Aggressive updates for responsiveness
+    // NETWORK OPTIMIZATION: Balanced update rate
     const now = Date.now();
     const timeSinceLastSend = now - (localPlayer.lastNetworkSend || 0);
     const isMoving = Math.abs(movement.vx) > 0.1 || Math.abs(movement.vy) > 0.1;
     const angleDiff = Math.abs(localPlayer.angle - lastSentAngle);
 
-    // Send if: moving (throttled to 33ms = ~30Hz) OR angle changed significantly (20ms = 50Hz)
-    // Higher update rate = smoother multiplayer experience
-    const shouldSendMove = isMoving && timeSinceLastSend > 33;
-    const shouldSendAim = angleDiff > ANGLE_THRESHOLD && timeSinceLastSend > 20;
+    // Send if: moving (throttled to 50ms = ~20Hz) OR angle changed significantly (33ms = ~30Hz)
+    // Lower rate = fewer reconciliation conflicts
+    const shouldSendMove = isMoving && timeSinceLastSend > 50;
+    const shouldSendAim = angleDiff > ANGLE_THRESHOLD && timeSinceLastSend > 33;
 
     if ((shouldSendMove || shouldSendAim) && ws && ws.readyState === 1) {
         localPlayer.lastNetworkSend = now;
