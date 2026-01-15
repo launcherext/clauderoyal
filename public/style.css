@@ -48,7 +48,102 @@ body {
 .gpu-layer {
     transform: translateZ(0);
     will-change: transform, opacity;
-    backface-visibility: hidden;
+}
+
+/* ============================================================================
+   WELCOME POPUP
+   ============================================================================ */
+.popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(5, 5, 10, 0.95);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    backdrop-filter: blur(10px);
+}
+
+.popup-overlay.hidden {
+    display: none;
+}
+
+.popup-content {
+    background: linear-gradient(145deg, rgba(20, 20, 35, 0.98), rgba(10, 10, 20, 0.98));
+    border: 2px solid var(--primary);
+    border-radius: 20px;
+    padding: 40px 50px;
+    text-align: center;
+    max-width: 400px;
+    box-shadow:
+        0 0 60px rgba(255, 107, 74, 0.3),
+        inset 0 0 30px rgba(255, 107, 74, 0.05);
+    animation: popupEnter 0.4s ease-out;
+}
+
+@keyframes popupEnter {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.popup-content h2 {
+    font-size: 1.8rem;
+    margin-bottom: 30px;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.popup-rules {
+    margin-bottom: 30px;
+}
+
+.popup-rules p {
+    font-size: 1.1rem;
+    color: var(--text-dim);
+    margin: 15px 0;
+    padding: 12px 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    border-left: 3px solid var(--accent);
+}
+
+.popup-rules p strong {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.popup-content button {
+    background: linear-gradient(135deg, var(--primary), #ff8a65);
+    border: none;
+    color: white;
+    font-size: 1.1rem;
+    font-weight: 700;
+    padding: 15px 50px;
+    border-radius: 30px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 20px rgba(255, 107, 74, 0.4);
+}
+
+.popup-content button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 30px rgba(255, 107, 74, 0.6);
 }
 
 /* Glassmorphism Card Base */
@@ -739,12 +834,12 @@ body::before {
 }
 
 #recentWinners h4::before {
-    content: '👑';
+    content: '💸';
     font-size: 0.75rem;
 }
 
 #winnerEntries:empty::after {
-    content: 'No winners yet';
+    content: 'No payouts yet';
     display: block;
     color: var(--text-dim);
     font-size: 0.65rem;
@@ -766,6 +861,38 @@ body::before {
 .winner-entry::before {
     content: '•';
     color: var(--success);
+}
+
+/* Payout entries with transaction links */
+.payout-entry {
+    justify-content: space-between;
+}
+
+.payout-entry::before {
+    content: '💰';
+    font-size: 0.6rem;
+}
+
+.payout-info {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tx-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.8rem;
+    opacity: 0.8;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.tx-link:hover {
+    opacity: 1;
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 4px var(--accent));
 }
 
 /* ============================================================================

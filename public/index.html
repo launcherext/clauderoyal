@@ -24,6 +24,19 @@
 </head>
 
 <body>
+    <!-- WELCOME POPUP -->
+    <div id="welcomePopup" class="popup-overlay">
+        <div class="popup-content">
+            <h2>Welcome to Claude Royale</h2>
+            <div class="popup-rules">
+                <p><strong>5 Players</strong> starts the round</p>
+                <p><strong>Last one alive</strong> wins the prize pool</p>
+                <p><strong>Next round</strong> begins automatically</p>
+            </div>
+            <button id="welcomeBtn">LET'S GO</button>
+        </div>
+    </div>
+
     <!-- LOADING SCREEN -->
     <div id="loadingScreen" class="gpu-layer">
         <img src="Untitled (1000 x 250 px).png" alt="Claude Royale" class="logo">
@@ -87,7 +100,7 @@
             <h3>Leaderboard</h3>
             <div id="lbEntries"></div>
             <div id="recentWinners">
-                <h4>Recent Winners</h4>
+                <h4>Recent Payouts</h4>
                 <div id="winnerEntries"></div>
             </div>
         </div>

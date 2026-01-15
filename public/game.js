@@ -23,6 +23,27 @@ function escapeHtml(text) {
 }
 
 // ============================================================================
+// WELCOME POPUP
+// ============================================================================
+(function initWelcomePopup() {
+    const popup = document.getElementById('welcomePopup');
+    const btn = document.getElementById('welcomeBtn');
+
+    if (!popup || !btn) return;
+
+    // Check if user has seen the popup before
+    if (localStorage.getItem('welcomeSeen')) {
+        popup.classList.add('hidden');
+        return;
+    }
+
+    btn.addEventListener('click', () => {
+        popup.classList.add('hidden');
+        localStorage.setItem('welcomeSeen', 'true');
+    });
+})();
+
+// ============================================================================
 // CONSTANTS
 // ============================================================================
 const ARENA_SIZE = 2000;
@@ -1744,6 +1765,31 @@ function updateTokenDisplay(data) {
         <div class="prize-pool">Prize Pool: ${parseFloat(prizePool).toFixed(4)} SOL</div>
     `;
     tokenInfoEl.style.display = 'block';
+
+    // Update recent payouts with transaction links
+    if (data.recentPayouts && data.recentPayouts.length > 0) {
+        updateRecentPayoutsUI(data.recentPayouts);
+    }
+}
+
+function updateRecentPayoutsUI(payouts) {
+    const container = document.getElementById('winnerEntries');
+    if (!container) return;
+
+    container.innerHTML = payouts.map(p => {
+        const roundNum = p.round ? p.round.replace('round-', 'R').split('-')[0] : '?';
+        const amount = parseFloat(p.amount).toFixed(4);
+        const txLink = p.txSignature
+            ? `<a href="https://orbmarkets.io/tx/${escapeHtml(p.txSignature)}" target="_blank" rel="noopener" class="tx-link" title="View on Orb">🔗</a>`
+            : '';
+
+        return `
+            <div class="winner-entry payout-entry">
+                <span class="payout-info">${escapeHtml(p.player)}: ${amount} SOL</span>
+                ${txLink}
+            </div>
+        `;
+    }).join('');
 }
 
 window.addEventListener('resize', () => {

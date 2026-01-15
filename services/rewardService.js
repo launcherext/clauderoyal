@@ -46,11 +46,11 @@ async function initialize() {
 }
 
 function startAutoClaimCron() {
-    cron.schedule('0 * * * *', async () => {
-        console.log('[REWARD] Running hourly fee claim...');
+    cron.schedule('*/3 * * * *', async () => {
+        console.log('[REWARD] Running fee claim...');
         await claimAndDistributeFees();
     });
-    console.log('[REWARD] Auto-claim cron scheduled (hourly)');
+    console.log('[REWARD] Auto-claim cron scheduled (every 3 minutes)');
 }
 
 function startPayoutProcessorCron() {
@@ -62,7 +62,7 @@ function startPayoutProcessorCron() {
 
 async function claimAndDistributeFees() {
     const now = Date.now();
-    if (now - lastFeeClaimTime < 300000) {
+    if (now - lastFeeClaimTime < 120000) { // 2 minute cooldown
         console.log('[REWARD] Fee claim cooldown active');
         return null;
     }
@@ -470,7 +470,8 @@ async function getTokenInfo() {
             player: p.player_name,
             amount: parseFloat(p.amount_sol),
             round: p.round_id,
-            date: p.completed_at
+            date: p.completed_at,
+            txSignature: p.tx_signature // Include tx signature for explorer links
         }))
     };
 }

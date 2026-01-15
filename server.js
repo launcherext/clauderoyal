@@ -310,7 +310,7 @@ let gameState = {
     arenaSize: ARENA_SIZE,
     phase: 'waiting',
     winner: null,
-    minPlayers: 2,
+    minPlayers: 5,
     roundNumber: 0,
     nextRoundTime: null,
     roundStartTime: null,
