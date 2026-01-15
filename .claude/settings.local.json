@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__thinking__sequentialthinking",
+      "mcp__fetch__imageFetch",
+      "WebFetch(domain:docs.helius.dev)",
+      "WebFetch(domain:www.helius.dev)",
+      "WebFetch(domain:pumpportal.fun)"
+    ]
+  }
+}

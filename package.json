@@ -1,0 +1,21 @@
+{
+  "name": "claude-royale",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@solana/web3.js": "^1.98.4",
+    "bs58": "^6.0.0",
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1",
+    "pg": "^8.17.1",
+    "uuid": "^13.0.0",
+    "ws": "^8.19.0"
+  }
+}

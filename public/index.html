@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0a0a15">
+    <meta name="description" content="Claude Royale - Real-time multiplayer battle royale game">
+
+    <title>Claude Royale - Battle Royale</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="Untitled design (27).png">
+
+    <!-- Preload critical assets -->
+    <link rel="preload" href="style.css" as="style">
+    <link rel="preload" href="game.js" as="script">
+    <link rel="preload" href="arena-floor.png" as="image">
+    <link rel="preload" href="player-skin.png" as="image">
+    <link rel="preload" href="menu-bg.png" as="image">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- LOADING SCREEN -->
+    <div id="loadingScreen" class="gpu-layer">
+        <img src="Untitled (1000 x 250 px).png" alt="Claude Royale" class="logo">
+        <div class="loading-bar-container">
+            <div class="loading-bar" id="loadingBar"></div>
+        </div>
+        <div id="loadingText">Loading assets...</div>
+    </div>
+
+    <!-- MAIN MENU -->
+    <div id="menu">
+        <img src="Untitled (1000 x 250 px).png" alt="Claude Royale" class="logo">
+        <div class="subtitle">Last One Standing Wins SOL</div>
+        <input type="text" id="nameInput" placeholder="Enter your name" maxlength="15" autocomplete="off"
+            spellcheck="false">
+        <button id="joinBtn">ENTER ARENA</button>
+    </div>
+
+    <!-- GAME CONTAINER -->
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- HUD -->
+        <div id="hud" class="gpu-layer">
+            <div id="roundTimer">0:00</div>
+            <div id="roundInfo">ROUND 0</div>
+            <div id="prizeInfo">Last one standing wins SOL</div>
+            <div id="healthBar">
+                <div id="healthFill"></div>
+            </div>
+            <div id="gameInfo">
+                <div>Players: <span id="playerCount">0</span> | Alive: <span id="aliveCount">0</span></div>
+                <div>Kills: <span id="myKills">0</span></div>
+            </div>
+        </div>
+
+        <!-- TOKEN INFO -->
+        <div id="tokenInfo" class="gpu-layer" style="display: none; position: fixed; top: 10px; right: 170px; background: rgba(10, 10, 21, 0.9); border: 1px solid #E07A5F; border-radius: 8px; padding: 10px 15px; font-size: 12px; z-index: 100;">
+            <div class="token-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 5px;">
+                <span class="token-name" style="font-weight: bold; color: #E07A5F;">$CROYALE</span>
+            </div>
+            <div class="prize-pool" style="color: #2ecc71;">Prize Pool: 0 SOL</div>
+        </div>
+
+        <!-- CLAUDE MESSAGES -->
+        <div id="claudeMessages" class="gpu-layer"></div>
+
+        <!-- KILL FEED -->
+        <div id="killFeed" class="gpu-layer"></div>
+
+        <!-- LEADERBOARD -->
+        <div id="leaderboard" class="gpu-layer">
+            <h3>Leaderboard</h3>
+            <div id="lbEntries"></div>
+            <div id="recentWinners">
+                <h4>Recent Winners</h4>
+                <div id="winnerEntries"></div>
+            </div>
+        </div>
+
+        <!-- LOBBY SIDEBAR -->
+        <div id="lobby" class="gpu-layer" style="position: fixed; right: 10px; top: 180px; background: rgba(10, 10, 21, 0.95); border: 1px solid #E07A5F; border-radius: 8px; padding: 12px; min-width: 150px; z-index: 90;">
+            <h3 style="margin: 0 0 8px 0; color: #E07A5F; font-size: 12px; text-transform: uppercase;">Players</h3>
+            <div id="lobbyNextRound" style="color: #00e5ff; font-size: 11px; margin-bottom: 10px; font-weight: bold;">Waiting...</div>
+            <div style="display: flex; gap: 15px; margin-bottom: 10px; font-size: 11px;">
+                <div><span style="color: #2ecc71;">●</span> <span id="lobbyPlaying">0</span> alive</div>
+                <div><span style="color: #666;">●</span> <span id="lobbyWaiting">0</span> dead</div>
+            </div>
+            <div id="lobbyPlayerList" style="max-height: 150px; overflow-y: auto; font-size: 10px;"></div>
+        </div>
+
+        <!-- MINIMAP -->
+        <canvas id="minimap" class="gpu-layer"></canvas>
+
+        <!-- INSTRUCTIONS -->
+        <div id="instructions" class="gpu-layer">
+            WASD - Move<br>
+            Mouse - Aim<br>
+            Click - Shoot
+        </div>
+
+        <!-- ARENA WARNING -->
+        <div id="arenaWarning" class="gpu-layer">STORM CLOSING IN</div>
+
+        <!-- SPECTATOR OVERLAY -->
+        <div id="spectatorOverlay" class="gpu-layer">
+            <span>SPECTATING</span> - Waiting for next round
+        </div>
+
+        <!-- COUNTDOWN -->
+        <div id="countdown" class="gpu-layer"></div>
+    </div>
+
+    <!-- ROUND END OVERLAY -->
+    <div id="roundEndOverlay">
+        <button id="closeRoundEnd" style="position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.1); border: 1px solid #666; color: #fff; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px;">CLOSE (X)</button>
+        <h1 id="roundEndTitle">ROUND OVER</h1>
+        <div class="winner-name" id="roundWinner"></div>
+        <div class="kills" id="roundKills"></div>
+        <div id="nextRoundTimer">Next round in 30 seconds...</div>
+        <div id="walletSection">
+            <p style="margin-bottom: 0.5rem; color: #ddd;">You won! Enter your Solana wallet to claim your prize:</p>
+            <div id="prizeAmount" style="color: #2ecc71; font-size: 1.2rem; font-weight: bold; margin-bottom: 1rem;">Prize: 0 SOL</div>
+            <input type="text" id="walletInput" placeholder="Your Solana wallet address" autocomplete="off"
+                spellcheck="false">
+            <br>
+            <button id="claimBtn">CLAIM PRIZE</button>
+        </div>
+    </div>
+
+    <!-- GAME SCRIPT (deferred for faster initial render) -->
+    <script src="game.js" defer></script>
+</body>
+
+</html>
