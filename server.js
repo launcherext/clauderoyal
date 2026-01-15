@@ -3,12 +3,27 @@ const { WebSocketServer } = require('ws');
 const http = require('http');
 const path = require('path');
 const rewardService = require('./services/rewardService');
+const cryptoService = require('./services/crypto');
+const {
+    globalRateLimiter,
+    claimRateLimiter,
+    adminRateLimiter,
+    adminAuth,
+    securityLogger,
+    validateSecurityConfig
+} = require('./middleware/auth');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+// Validate security configuration at startup
+validateSecurityConfig();
+
+// Apply security middleware
 app.use(express.json());
+app.use(securityLogger);
+app.use('/api/', globalRateLimiter); // Rate limit all API endpoints
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Initialize reward service
@@ -102,7 +117,7 @@ const WEAPONS = {
     pistol: {
         id: 'pistol',
         name: 'Pistol',
-        damage: 15,
+        damage: 18,         // +20%
         fireRate: 300,      // ms between shots
         bulletSpeed: 18,
         spread: 0,          // radians of random spread
@@ -112,7 +127,7 @@ const WEAPONS = {
     shotgun: {
         id: 'shotgun',
         name: 'Shotgun',
-        damage: 12,
+        damage: 14,         // +20%
         fireRate: 800,
         bulletSpeed: 14,
         spread: 0.3,
@@ -122,7 +137,7 @@ const WEAPONS = {
     smg: {
         id: 'smg',
         name: 'SMG',
-        damage: 10,
+        damage: 12,         // +20%
         fireRate: 100,
         bulletSpeed: 16,
         spread: 0.15,
@@ -132,7 +147,7 @@ const WEAPONS = {
     sniper: {
         id: 'sniper',
         name: 'Sniper',
-        damage: 60,
+        damage: 72,         // +20%
         fireRate: 1200,
         bulletSpeed: 30,
         spread: 0,
@@ -269,15 +284,14 @@ function checkLootPickup(player) {
 }
 
 // ============================================================================
-// PLAYER ID GENERATION - Simple incrementing counter, not UUID
+// PLAYER ID GENERATION - SECURITY: Using cryptographically secure IDs
 // ============================================================================
-let playerIdCounter = 0;
 function generatePlayerId() {
-    return `p${++playerIdCounter}`;
+    return cryptoService.generateSecurePlayerId();
 }
 
 function generateSessionId() {
-    return `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return cryptoService.generateSecureSessionId();
 }
 
 // ============================================================================
@@ -543,18 +557,21 @@ async function endRound(winner) {
         });
         if (recentWinners.length > 10) recentWinners.pop();
 
-        // Create winner claim for SOL rewards
+        // Create winner claim for SOL rewards - SECURITY: Now generates cryptographic token
         try {
             winnerClaim = await rewardService.createWinnerClaim(
                 gameState.roundNumber,
                 winner.name,
-                winner.sessionId || winner.id
+                winner.id,
+                winner.sessionId
             );
         } catch (e) {
-            console.error('Failed to create winner claim:', e.message);
+            console.error('[REWARD] Failed to create winner claim:', e.message);
         }
 
         broadcast('c', { m: getRandomMessage('winner', { winner: winner.name, kills: kills }) });
+
+        // Broadcast round end - claimToken only sent to winner via their WebSocket
         broadcast('re', {
             w: winner.name,
             wi: winner.id,
@@ -567,6 +584,16 @@ async function endRound(winner) {
                 expiresAt: winnerClaim.expires_at
             } : null
         });
+
+        // Send claim token ONLY to the winner (not broadcast)
+        if (winnerClaim && winnerClaim.claimToken && winner.ws) {
+            sendToPlayer(winner.ws, 'claimToken', {
+                token: winnerClaim.claimToken,
+                roundId: winnerClaim.round_id,
+                amount: parseFloat(winnerClaim.prize_amount_sol) || 0,
+                expiresAt: winnerClaim.expires_at
+            });
+        }
     } else {
         broadcast('c', { m: "Everyone is dead. How disappointing." });
         broadcast('re', { w: null, r: gameState.roundNumber, lb: getLeaderboardData() });
@@ -883,12 +910,19 @@ function gameLoop() {
         lastTick = now - (delta % TICK_MS);
         gameState.tick++;
 
-        // Update bullets
+        // Update bullets (skip if round ended mid-tick to prevent crash)
+        if (gameState.phase === 'ended') {
+            setImmediate(gameLoop);
+            return;
+        }
+
         const activeBullets = bulletPool.getActive();
         const toRemove = [];
 
         for (let i = activeBullets.length - 1; i >= 0; i--) {
             const bullet = activeBullets[i];
+            // Guard against race condition where clear() empties array mid-iteration
+            if (!bullet) continue;
 
             bullet.x += bullet.vx;
             bullet.y += bullet.vy;
@@ -1012,22 +1046,39 @@ function gameLoop() {
 gameLoop();
 
 // ============================================================================
-// REWARD API ENDPOINTS
+// REWARD API ENDPOINTS - SECURITY: Rate limited and authenticated
 // ============================================================================
 
-// Submit wallet address to claim prize
-app.post('/api/rewards/claim', async (req, res) => {
+/**
+ * Submit wallet address to claim prize
+ * SECURITY: Now requires cryptographic claim token (not just session ID)
+ */
+app.post('/api/rewards/claim', claimRateLimiter, async (req, res) => {
     try {
-        const { sessionId, walletAddress } = req.body;
+        const { claimToken, walletAddress, sessionId } = req.body;
 
-        if (!sessionId || !walletAddress) {
-            return res.status(400).json({ success: false, error: 'Missing sessionId or walletAddress' });
+        if (!walletAddress) {
+            return res.status(400).json({ success: false, error: 'Missing walletAddress' });
         }
 
-        const result = await rewardService.submitWalletForClaim(sessionId, walletAddress);
+        let result;
+
+        // Prefer token-based claims (secure)
+        if (claimToken) {
+            result = await rewardService.submitWalletForClaim(claimToken, walletAddress);
+        }
+        // Fall back to legacy session-based claims (deprecated)
+        else if (sessionId) {
+            console.warn(`[SECURITY] Legacy session claim from ${req.ip}`);
+            result = await rewardService.submitWalletForClaimBySession(sessionId, walletAddress);
+        }
+        else {
+            return res.status(400).json({ success: false, error: 'Missing claimToken or sessionId' });
+        }
+
         res.json(result);
     } catch (e) {
-        console.error('Claim error:', e);
+        console.error('[API] Claim error:', e);
         res.status(500).json({ success: false, error: 'Server error' });
     }
 });
@@ -1065,14 +1116,76 @@ app.get('/api/rewards/pool', async (req, res) => {
     }
 });
 
-// Admin: Manual fee claim trigger (protected in production)
-app.post('/api/admin/claim-fees', async (req, res) => {
+// ============================================================================
+// ADMIN API ENDPOINTS - SECURITY: Requires authentication
+// ============================================================================
+
+// Admin: Manual fee claim trigger
+app.post('/api/admin/claim-fees', adminRateLimiter, adminAuth, async (req, res) => {
     try {
         const result = await rewardService.manualClaimFees();
         res.json({ success: true, result });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
+});
+
+// Admin: Reconcile prize pool balance
+app.post('/api/admin/reconcile-pool', adminRateLimiter, adminAuth, async (req, res) => {
+    try {
+        const result = await rewardService.reconcilePrizePool();
+        res.json({ success: true, result });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Admin: Force process payout queue
+app.post('/api/admin/process-payouts', adminRateLimiter, adminAuth, async (req, res) => {
+    try {
+        await rewardService.processPayoutQueue();
+        res.json({ success: true, message: 'Payout processing triggered' });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Admin: TEST MODE - Simulate adding funds to prize pool (DB only, not real wallet)
+// Use this to test claim flow without real SOL
+app.post('/api/admin/test-add-pool', adminRateLimiter, adminAuth, async (req, res) => {
+    try {
+        const { amount } = req.body;
+        const testAmount = parseFloat(amount) || 0.1;
+
+        if (testAmount <= 0 || testAmount > 10) {
+            return res.status(400).json({ success: false, error: 'Amount must be between 0 and 10 SOL' });
+        }
+
+        const db = require('./services/database');
+        await db.addToPrizePool(testAmount);
+        const newBalance = await db.getPrizePoolBalance();
+
+        console.log(`[TEST] Added ${testAmount} SOL to prize pool DB (new balance: ${newBalance})`);
+        res.json({
+            success: true,
+            added: testAmount,
+            newDbBalance: newBalance,
+            warning: 'This only updates DB balance. Actual payouts require real SOL in prize pool wallet.'
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Health check endpoint (public)
+app.get('/api/health', async (req, res) => {
+    const dbHealth = await require('./services/database').healthCheck();
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        database: dbHealth,
+        uptime: process.uptime()
+    });
 });
 
 // ============================================================================

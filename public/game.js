@@ -506,7 +506,7 @@ function handleMessage(data) {
             if (data.lb) updateLeaderboardUI(data.lb);
             if (data.rw) updateRecentWinnersUI(data.rw);
             if (isSpectator) {
-                document.getElementById('spectatorOverlay').classList.add('show');
+                showSpectatorOverlay('ROUND IN PROGRESS', 'Waiting for next round to start');
             }
 
             // Fetch token info for display
@@ -593,13 +593,20 @@ function handleMessage(data) {
 
             // Handle spectator mode
             if (!localPlayer.alive && data.ph === 'active') {
-                document.getElementById('spectatorOverlay').classList.add('show');
                 const alivePlayers = data.p.filter(p => p.v === 1);
+                showSpectatorOverlay('YOU DIED', `${alivePlayers.length} player${alivePlayers.length !== 1 ? 's' : ''} remaining`);
                 if (alivePlayers.length > 0 && !spectateTarget) {
                     spectateTarget = alivePlayers[0].i;
                 }
+            } else if (isSpectator && data.ph === 'active') {
+                const alivePlayers = data.p.filter(p => p.v === 1);
+                showSpectatorOverlay('ROUND IN PROGRESS', `${alivePlayers.length} player${alivePlayers.length !== 1 ? 's' : ''} remaining`);
+            } else if (isSpectator && data.ph === 'waiting') {
+                showSpectatorOverlay('WAITING FOR PLAYERS', `${data.pc || 0} players in lobby`);
+            } else if (isSpectator && data.ph === 'ended') {
+                showSpectatorOverlay('ROUND ENDED', 'Next round starting soon');
             } else {
-                document.getElementById('spectatorOverlay').classList.remove('show');
+                hideSpectatorOverlay();
             }
 
             // Update lobby sidebar
@@ -625,7 +632,7 @@ function handleMessage(data) {
 
         case 'rs': // roundStart
             document.getElementById('roundEndOverlay').classList.remove('show');
-            document.getElementById('spectatorOverlay').classList.remove('show');
+            hideSpectatorOverlay();
             isSpectator = false;
             spectateTarget = null;
             pendingInputs.length = 0; // Clear prediction buffer
@@ -800,6 +807,23 @@ function updateLobby(nextRoundIn, lobbyPlayers, phase, playerCount, aliveCount) 
     if (timer && nextRoundIn > 0) {
         timer.textContent = `Next round in ${nextRoundIn} seconds...`;
     }
+}
+
+// ============================================================================
+// SPECTATOR OVERLAY
+// ============================================================================
+function showSpectatorOverlay(title, message) {
+    const overlay = document.getElementById('spectatorOverlay');
+    const titleEl = document.getElementById('spectatorTitle');
+    const messageEl = document.getElementById('spectatorMessage');
+
+    if (titleEl) titleEl.textContent = title;
+    if (messageEl) messageEl.textContent = message;
+    overlay.classList.add('show');
+}
+
+function hideSpectatorOverlay() {
+    document.getElementById('spectatorOverlay').classList.remove('show');
 }
 
 function updateLeaderboardUI(leaderboard) {

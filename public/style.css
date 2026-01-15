@@ -869,12 +869,21 @@ body::before {
     50% { box-shadow: 0 8px 60px rgba(0, 229, 255, 0.4); }
 }
 
-#spectatorOverlay span {
+#spectatorOverlay #spectatorTitle {
     background: linear-gradient(135deg, var(--accent), var(--purple));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
     font-weight: 900;
+}
+
+#spectatorOverlay #spectatorMessage {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 500;
 }
 
 /* ============================================================================
