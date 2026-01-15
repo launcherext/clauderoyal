@@ -374,31 +374,87 @@ function lerpAngle(a, b, t) {
 }
 
 // ============================================================================
-// CLIENT-SIDE PREDICTION
+// CLIENT-SIDE PREDICTION + BUTTERY SMOOTH MOVEMENT
 // ============================================================================
 let inputSequence = 0;
 const pendingInputs = []; // Inputs sent but not yet acknowledged
 
+// ============================================================================
+// SECRET SAUCE: MOMENTUM-BASED MOVEMENT
+// ============================================================================
+const movement = {
+    vx: 0,              // Current velocity X
+    vy: 0,              // Current velocity Y
+    acceleration: 0.8,  // How fast we reach max speed (0-1, higher = snappier)
+    friction: 0.85,     // How fast we slow down (0-1, higher = more slide)
+    maxSpeed: 5,        // Max movement speed
+
+    // Visual recoil
+    recoilX: 0,
+    recoilY: 0,
+    recoilDecay: 0.85,
+
+    // Aim smoothing
+    targetAngle: 0,
+    currentAngle: 0,
+    aimSmoothing: 0.35, // 0 = no smoothing, 1 = very smooth (laggy)
+};
+
 function processLocalInput(keys, dt) {
-    let dx = 0, dy = 0;
+    // Get input direction
+    let inputX = 0, inputY = 0;
+    if (keys.w) inputY -= 1;
+    if (keys.s) inputY += 1;
+    if (keys.a) inputX -= 1;
+    if (keys.d) inputX += 1;
 
-    if (keys.w) dy -= PLAYER_SPEED;
-    if (keys.s) dy += PLAYER_SPEED;
-    if (keys.a) dx -= PLAYER_SPEED;
-    if (keys.d) dx += PLAYER_SPEED;
-
-    // Normalize diagonal movement
-    if (dx !== 0 && dy !== 0) {
-        dx *= 0.707;
-        dy *= 0.707;
+    // Normalize diagonal
+    if (inputX !== 0 && inputY !== 0) {
+        inputX *= 0.707;
+        inputY *= 0.707;
     }
 
-    return { dx, dy };
+    // Apply acceleration toward input direction
+    if (inputX !== 0 || inputY !== 0) {
+        movement.vx += inputX * movement.acceleration;
+        movement.vy += inputY * movement.acceleration;
+    }
+
+    // Apply friction (always, creates nice deceleration)
+    movement.vx *= movement.friction;
+    movement.vy *= movement.friction;
+
+    // Clamp to max speed
+    const speed = Math.sqrt(movement.vx * movement.vx + movement.vy * movement.vy);
+    if (speed > movement.maxSpeed) {
+        movement.vx = (movement.vx / speed) * movement.maxSpeed;
+        movement.vy = (movement.vy / speed) * movement.maxSpeed;
+    }
+
+    // Kill tiny velocities (prevents drift)
+    if (Math.abs(movement.vx) < 0.01) movement.vx = 0;
+    if (Math.abs(movement.vy) < 0.01) movement.vy = 0;
+
+    // Apply recoil decay
+    movement.recoilX *= movement.recoilDecay;
+    movement.recoilY *= movement.recoilDecay;
+
+    return { dx: movement.vx, dy: movement.vy };
 }
 
 function applyInput(player, input) {
     player.x = Math.max(PLAYER_SIZE, Math.min(ARENA_SIZE - PLAYER_SIZE, player.x + input.dx));
     player.y = Math.max(PLAYER_SIZE, Math.min(ARENA_SIZE - PLAYER_SIZE, player.y + input.dy));
+}
+
+// Add recoil when shooting
+function applyRecoil(amount) {
+    const recoilAngle = localPlayer.angle + Math.PI; // Opposite of aim
+    movement.recoilX += Math.cos(recoilAngle) * amount;
+    movement.recoilY += Math.sin(recoilAngle) * amount;
+
+    // Also add screen shake
+    addScreenShake(amount * 2, 80);
 }
 
 function reconcileWithServer(serverX, serverY, serverSeq) {
@@ -488,6 +544,35 @@ const damageNumbers = [];  // { x, y, damage, time, color }
 function addScreenShake(intensity, duration) {
     screenShake.intensity = Math.max(screenShake.intensity, intensity);
     screenShake.duration = Math.max(screenShake.duration, duration);
+}
+
+// Screen flash effect for kill confirmations etc
+const screenFlash = { color: '#fff', alpha: 0, duration: 0, startTime: 0 };
+
+function flashScreen(color, alpha, duration) {
+    screenFlash.color = color;
+    screenFlash.alpha = alpha;
+    screenFlash.duration = duration;
+    screenFlash.startTime = Date.now();
+}
+
+function drawScreenFlash() {
+    if (screenFlash.alpha <= 0) return;
+
+    const elapsed = Date.now() - screenFlash.startTime;
+    if (elapsed > screenFlash.duration) {
+        screenFlash.alpha = 0;
+        return;
+    }
+
+    // Fade out
+    const progress = elapsed / screenFlash.duration;
+    const currentAlpha = screenFlash.alpha * (1 - progress);
+
+    ctx.fillStyle = screenFlash.color;
+    ctx.globalAlpha = currentAlpha;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1;
 }
 
 function addHitMarker() {
@@ -723,7 +808,17 @@ function handleMessage(data) {
             // Death particles
             const victim = gameState.players.find(p => p.i === data.vi);
             if (victim) {
-                particlePool.spawnBurst(victim.x, victim.y, 20, 5, 1000, 8, '#da7756');
+                particlePool.spawnBurst(victim.x, victim.y, 25, 6, 1200, 10, '#da7756');
+                particlePool.spawnBurst(victim.x, victim.y, 15, 4, 800, 6, '#e8a87c');
+            }
+
+            // SECRET SAUCE: Kill confirmation feedback
+            if (data.kri === playerId) {
+                // We got a kill!
+                addScreenShake(8, 150); // Strong shake
+                // Flash the screen slightly green
+                flashScreen('#7bc47f', 0.15, 200);
+                // Play kill sound effect would go here
             }
             break;
 
@@ -1051,6 +1146,14 @@ document.addEventListener('mousemove', (e) => {
     mouseY = e.clientY;
 });
 
+// Weapon recoil amounts (higher = more kick)
+const weaponRecoil = {
+    pistol: 1.5,
+    shotgun: 4.0,
+    smg: 0.8,
+    sniper: 3.5
+};
+
 document.addEventListener('click', (e) => {
     if (e.target.closest('#menu') || e.target.closest('#roundEndOverlay')) return;
 
@@ -1065,10 +1168,26 @@ document.addEventListener('click', (e) => {
         lastShootTime = now;
         ws.send(JSON.stringify({ t: 'sh' }));
 
-        // Muzzle flash particles
+        // SECRET SAUCE: Weapon recoil
+        const currentWeapon = localPlayer.weapon || 'pistol';
+        const recoilAmount = weaponRecoil[currentWeapon] || 1.5;
+        applyRecoil(recoilAmount);
+
+        // Enhanced muzzle flash particles
         const muzzleX = localPlayer.x + Math.cos(localPlayer.angle) * 30;
         const muzzleY = localPlayer.y + Math.sin(localPlayer.angle) * 30;
-        particlePool.spawnBurst(muzzleX, muzzleY, 8, 3, 200, 4, '#e8a87c');
+
+        // Primary flash
+        particlePool.spawnBurst(muzzleX, muzzleY, 10, 4, 150, 5, '#ffcc66');
+        // Secondary sparks
+        particlePool.spawnBurst(muzzleX, muzzleY, 5, 2, 100, 3, '#ff9933');
+
+        // Spawn bullet trail particles along aim direction
+        for (let i = 1; i <= 3; i++) {
+            const trailX = muzzleX + Math.cos(localPlayer.angle) * (i * 15);
+            const trailY = muzzleY + Math.sin(localPlayer.angle) * (i * 15);
+            particlePool.spawnBurst(trailX, trailY, 2, 1, 80, 2, '#e8a87c');
+        }
     }
 });
 
@@ -1117,14 +1236,19 @@ function updateLocalPlayer(dt) {
         return;
     }
 
-    // Client-side prediction: process input locally
+    // Client-side prediction: process input locally (ALWAYS - for momentum)
     const input = processLocalInput(keys, dt);
 
-    if (input.dx !== 0 || input.dy !== 0) {
-        // Apply locally for instant feedback
-        applyInput(localPlayer, input);
+    // Apply movement (including momentum decay)
+    applyInput(localPlayer, input);
 
-        // Send to server with sequence number
+    // Apply visual recoil offset
+    localPlayer.x += movement.recoilX;
+    localPlayer.y += movement.recoilY;
+
+    // Send to server if we're moving or recently moved
+    const isMoving = Math.abs(movement.vx) > 0.1 || Math.abs(movement.vy) > 0.1;
+    if (isMoving) {
         inputSequence++;
         const inputData = {
             t: 'm',
@@ -1134,7 +1258,6 @@ function updateLocalPlayer(dt) {
             seq: inputSequence
         };
 
-        // Store for reconciliation
         pendingInputs.push({ seq: inputSequence, dx: input.dx, dy: input.dy });
 
         if (ws && ws.readyState === 1) {
@@ -1142,12 +1265,15 @@ function updateLocalPlayer(dt) {
         }
     }
 
-    // Update angle
+    // SECRET SAUCE: Smooth aim with slight lag (reduces jitter, feels pro)
     const screenX = localPlayer.x - camera.x;
     const screenY = localPlayer.y - camera.y;
-    localPlayer.angle = Math.atan2(mouseY - screenY, mouseX - screenX);
+    movement.targetAngle = Math.atan2(mouseY - screenY, mouseX - screenX);
 
-    // Only send angle update if it changed significantly (throttle to reduce bandwidth)
+    // Smoothly interpolate toward target angle
+    localPlayer.angle = lerpAngle(localPlayer.angle, movement.targetAngle, 1 - movement.aimSmoothing);
+
+    // Only send angle update if it changed significantly
     const angleDiff = Math.abs(localPlayer.angle - lastSentAngle);
     if (angleDiff > ANGLE_THRESHOLD && ws && ws.readyState === 1) {
         lastSentAngle = localPlayer.angle;
@@ -1170,13 +1296,32 @@ function updateLocalPlayer(dt) {
     }
 }
 
-function updateCamera() {
-    // Smooth camera with lerp
-    targetCamera.x = localPlayer.x - canvas.width / 2;
-    targetCamera.y = localPlayer.y - canvas.height / 2;
+// ============================================================================
+// SECRET SAUCE: CAMERA LEAD + DEADZONE
+// ============================================================================
+const cameraConfig = {
+    leadAmount: 80,      // How far camera leads in movement direction
+    leadSmoothing: 0.05, // How smoothly camera catches up
+    baseSmoothing: 0.12, // Base camera smoothing
+    currentLead: { x: 0, y: 0 }
+};
 
-    camera.x = lerp(camera.x, targetCamera.x, 0.1);
-    camera.y = lerp(camera.y, targetCamera.y, 0.1);
+function updateCamera() {
+    // Calculate camera lead based on velocity
+    const targetLeadX = movement.vx * cameraConfig.leadAmount / movement.maxSpeed;
+    const targetLeadY = movement.vy * cameraConfig.leadAmount / movement.maxSpeed;
+
+    // Smooth the lead
+    cameraConfig.currentLead.x = lerp(cameraConfig.currentLead.x, targetLeadX, cameraConfig.leadSmoothing);
+    cameraConfig.currentLead.y = lerp(cameraConfig.currentLead.y, targetLeadY, cameraConfig.leadSmoothing);
+
+    // Target camera position with lead
+    targetCamera.x = localPlayer.x - canvas.width / 2 + cameraConfig.currentLead.x;
+    targetCamera.y = localPlayer.y - canvas.height / 2 + cameraConfig.currentLead.y;
+
+    // Smooth camera movement
+    camera.x = lerp(camera.x, targetCamera.x, cameraConfig.baseSmoothing);
+    camera.y = lerp(camera.y, targetCamera.y, cameraConfig.baseSmoothing);
 }
 
 // ============================================================================
@@ -1743,6 +1888,9 @@ function gameLoop(currentTime) {
     drawDamageNumbers();
     particlePool.draw(ctx, camera.x, camera.y);
     drawHitMarkers();  // Draw on top (screen-space)
+    drawCrosshair();   // Draw crosshair
+    drawScreenFlash(); // Kill confirmation flash
+    drawLowHealthVignette(); // Low health screen effect
     drawMinimap();
 
     // Restore camera after shake
@@ -1752,6 +1900,92 @@ function gameLoop(currentTime) {
     }
 
     requestAnimationFrame(gameLoop);
+}
+
+// ============================================================================
+// SECRET SAUCE: CROSSHAIR & SCREEN EFFECTS
+// ============================================================================
+function drawCrosshair() {
+    if (!localPlayer.alive || isSpectator) return;
+
+    // Dynamic crosshair that reacts to movement/shooting
+    const spread = Math.sqrt(movement.vx * movement.vx + movement.vy * movement.vy) * 3;
+    const recoilSpread = (Math.abs(movement.recoilX) + Math.abs(movement.recoilY)) * 5;
+    const totalSpread = 8 + spread + recoilSpread;
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.lineWidth = 2;
+
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+
+    // Four lines forming crosshair with gap in center
+    const gap = totalSpread;
+    const len = 12;
+
+    // Top
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - gap);
+    ctx.lineTo(cx, cy - gap - len);
+    ctx.stroke();
+
+    // Bottom
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + gap);
+    ctx.lineTo(cx, cy + gap + len);
+    ctx.stroke();
+
+    // Left
+    ctx.beginPath();
+    ctx.moveTo(cx - gap, cy);
+    ctx.lineTo(cx - gap - len, cy);
+    ctx.stroke();
+
+    // Right
+    ctx.beginPath();
+    ctx.moveTo(cx + gap, cy);
+    ctx.lineTo(cx + gap + len, cy);
+    ctx.stroke();
+
+    // Center dot
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawLowHealthVignette() {
+    if (!localPlayer.alive) return;
+
+    const healthPercent = localPlayer.health / 150;
+
+    // Start vignette at 40% health
+    if (healthPercent > 0.4) return;
+
+    // Calculate vignette intensity (0 at 40%, max at 0%)
+    const intensity = 1 - (healthPercent / 0.4);
+
+    // Pulsing effect
+    const pulse = Math.sin(Date.now() / 200) * 0.15 + 0.85;
+    const alpha = intensity * 0.4 * pulse;
+
+    // Draw red vignette around edges
+    const gradient = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, canvas.width * 0.3,
+        canvas.width / 2, canvas.height / 2, canvas.width * 0.8
+    );
+    gradient.addColorStop(0, 'rgba(200, 50, 50, 0)');
+    gradient.addColorStop(1, `rgba(180, 30, 30, ${alpha})`);
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Add heartbeat effect at very low health
+    if (healthPercent < 0.2) {
+        const heartbeat = Math.sin(Date.now() / 150) > 0.7 ? 0.15 : 0;
+        ctx.fillStyle = `rgba(255, 0, 0, ${heartbeat})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 }
 
 // ============================================================================
