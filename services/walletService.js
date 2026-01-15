@@ -261,11 +261,11 @@ async function sendSol(fromPrivateKey, toAddress, amountSol) {
         lamports
     });
 
-    // Build optimized transaction
+    // Build optimized transaction (let it auto-estimate CU, simple transfer ~450 CU with budget instructions)
     const { transaction, lastValidBlockHeight } = await buildOptimizedTransaction(
         fromKeypair,
         [transferInstruction],
-        { computeUnitLimit: 300, priorityFeeMultiplier: 1.5 } // Simple transfer needs ~200 CU
+        { priorityFeeMultiplier: 1.5 }
     );
 
     // Sign transaction
