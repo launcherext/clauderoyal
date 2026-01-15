@@ -194,8 +194,14 @@ async function buildOptimizedTransaction(payer, instructions, options = {}) {
         const prelimTx = new VersionedTransaction(prelimMessage);
         prelimTx.sign([payer]);
 
-        estimatedCU = await estimateComputeUnits(prelimTx);
-        console.log(`[WALLET] Estimated CU from simulation: ${estimatedCU}`);
+        const rawEstimate = await estimateComputeUnits(prelimTx);
+        console.log(`[WALLET] Raw CU estimate from simulation: ${rawEstimate}`);
+        
+        // The raw estimate includes overhead from the preliminary ComputeBudget instruction
+        // We need to account for the fact that our final tx will have TWO ComputeBudget instructions
+        // Add overhead buffer (ComputeBudget instructions + safety margin)
+        estimatedCU = Math.max(rawEstimate + 5000, 10000); // Minimum 10k CU, add 5k buffer
+        console.log(`[WALLET] Adjusted CU with overhead: ${estimatedCU}`);
     }
 
     // Build final instructions with compute budget
