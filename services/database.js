@@ -112,6 +112,20 @@ async function initDatabase() {
             CREATE INDEX IF NOT EXISTS idx_claims_session ON pending_claims(winner_session_id);
             CREATE INDEX IF NOT EXISTS idx_claims_status ON pending_claims(claim_status);
             CREATE INDEX IF NOT EXISTS idx_claims_token_hash ON pending_claims(claim_token_hash);
+
+            -- Migration: Add columns if they don't exist (for existing deployments)
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='pending_claims' AND column_name='claim_token_hash') THEN
+                    ALTER TABLE pending_claims ADD COLUMN claim_token_hash VARCHAR(64);
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='pending_claims' AND column_name='processing_locked_at') THEN
+                    ALTER TABLE pending_claims ADD COLUMN processing_locked_at TIMESTAMP;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='pending_claims' AND column_name='processing_locked_by') THEN
+                    ALTER TABLE pending_claims ADD COLUMN processing_locked_by VARCHAR(50);
+                END IF;
+            END $$;
         `);
         console.log('[DB] Database tables initialized');
     } finally {

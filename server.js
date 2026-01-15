@@ -816,9 +816,9 @@ wss.on('connection', (ws) => {
                         const newX = Math.max(20, Math.min(ARENA_SIZE - 20, msg.x));
                         const newY = Math.max(20, Math.min(ARENA_SIZE - 20, msg.y));
 
-                        // ANTI-CHEAT: Strict speed validation
-                        // Max speed is 5 units/frame * ~3 frames of network tolerance = 15 units
-                        const MAX_MOVE_DIST = 15;
+                        // ANTI-CHEAT: Speed validation with network tolerance
+                        // Max speed is 5 units/frame * ~20 frames for network latency = 100 units
+                        const MAX_MOVE_DIST = 100;
                         const dist = Math.sqrt((newX - p.x) ** 2 + (newY - p.y) ** 2);
 
                         if (dist <= MAX_MOVE_DIST) {
