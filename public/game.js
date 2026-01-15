@@ -103,7 +103,6 @@ const ARENA_SIZE = 2000;
 const PLAYER_SPEED = 5;
 const PLAYER_SIZE = 20;
 const SPRITE_SIZE = 50;
-const INTERPOLATION_BUFFER_MS = 100; // Render 100ms behind for smooth lerp
 const RECONCILIATION_THRESHOLD = 50; // Snap if server diff > this
 
 // ============================================================================
@@ -360,9 +359,11 @@ const particlePool = {
 particlePool.init();
 
 // ============================================================================
-// ENTITY INTERPOLATION BUFFER
+// ENTITY INTERPOLATION BUFFER - Smooth other player movement
 // ============================================================================
 const entityStates = {}; // { playerId: [{ timestamp, x, y, angle, health, ... }, ...] }
+const INTERPOLATION_DELAY = 150; // Render 150ms behind (covers ~5 tick gaps)
+const EXTRAPOLATION_LIMIT = 200; // Max ms to extrapolate into future
 
 function pushEntityState(id, state) {
     if (!entityStates[id]) {
@@ -370,10 +371,31 @@ function pushEntityState(id, state) {
     }
 
     state.timestamp = Date.now();
+
+    // Calculate velocity for extrapolation (if we have previous state)
+    const states = entityStates[id];
+    if (states.length > 0) {
+        const prev = states[states.length - 1];
+        const dt = (state.timestamp - prev.timestamp) / 1000; // seconds
+        if (dt > 0 && dt < 1) { // Sanity check
+            state.vx = (state.x - prev.x) / dt;
+            state.vy = (state.y - prev.y) / dt;
+            state.vAngle = (state.angle - prev.angle) / dt;
+        } else {
+            state.vx = 0;
+            state.vy = 0;
+            state.vAngle = 0;
+        }
+    } else {
+        state.vx = 0;
+        state.vy = 0;
+        state.vAngle = 0;
+    }
+
     entityStates[id].push(state);
 
-    // Keep only last 1 second of states
-    while (entityStates[id].length > 30) {
+    // Keep only last 2 seconds of states (more buffer for laggy connections)
+    while (entityStates[id].length > 60) {
         entityStates[id].shift();
     }
 }
@@ -385,28 +407,66 @@ function getInterpolatedState(id, renderTime) {
     // Find the two states to interpolate between
     let before = null;
     let after = null;
+    let beforeIdx = -1;
 
     for (let i = 0; i < states.length; i++) {
         if (states[i].timestamp <= renderTime) {
             before = states[i];
+            beforeIdx = i;
         } else {
             after = states[i];
             break;
         }
     }
 
-    if (!before) return states[0];
-    if (!after) return before;
+    // No states before render time - use oldest state
+    if (!before) {
+        return states[0];
+    }
 
-    // Interpolation factor
-    const t = (renderTime - before.timestamp) / (after.timestamp - before.timestamp);
-    const clampedT = Math.max(0, Math.min(1, t));
+    // Have both states - interpolate between them
+    if (after) {
+        const total = after.timestamp - before.timestamp;
+        const t = total > 0 ? (renderTime - before.timestamp) / total : 0;
+        const clampedT = Math.max(0, Math.min(1, t));
+
+        return {
+            x: lerp(before.x, after.x, clampedT),
+            y: lerp(before.y, after.y, clampedT),
+            angle: lerpAngle(before.angle, after.angle, clampedT),
+            health: after.health,
+            shield: after.shield,
+            weapon: after.weapon,
+            alive: after.alive,
+            name: before.name,
+            color: before.color,
+            kills: after.kills,
+            character: before.character,
+            id: id
+        };
+    }
+
+    // No future state - EXTRAPOLATE based on velocity
+    const timeSinceLast = renderTime - before.timestamp;
+
+    // Don't extrapolate too far (causes teleporting when data arrives)
+    if (timeSinceLast > EXTRAPOLATION_LIMIT) {
+        return before;
+    }
+
+    // Extrapolate position based on last known velocity
+    const extSeconds = timeSinceLast / 1000;
+    const extX = before.x + (before.vx || 0) * extSeconds;
+    const extY = before.y + (before.vy || 0) * extSeconds;
+    const extAngle = before.angle + (before.vAngle || 0) * extSeconds;
 
     return {
-        x: lerp(before.x, after.x, clampedT),
-        y: lerp(before.y, after.y, clampedT),
-        angle: lerpAngle(before.angle, after.angle, clampedT),
+        x: Math.max(20, Math.min(ARENA_SIZE - 20, extX)),
+        y: Math.max(20, Math.min(ARENA_SIZE - 20, extY)),
+        angle: extAngle,
         health: before.health,
+        shield: before.shield,
+        weapon: before.weapon,
         alive: before.alive,
         name: before.name,
         color: before.color,
@@ -1548,7 +1608,7 @@ function drawArena() {
 }
 
 function drawPlayers() {
-    const renderTime = Date.now() - INTERPOLATION_BUFFER_MS;
+    const renderTime = Date.now() - INTERPOLATION_DELAY;
 
     // Draw other players with interpolation
     for (const rawPlayer of gameState.players) {
