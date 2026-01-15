@@ -602,29 +602,35 @@ function handleMessage(data) {
             gameState.aliveCount = data.ac;
 
             // Process players for interpolation
-            for (const p of data.p) {
+            for (let i = 0; i < data.p.length; i++) {
+                const p = data.p[i];
                 if (p.i === playerId) {
                     // Update local player from server (for health, kills, etc)
-                    localPlayer.health = p.h;
+                    if (p.h !== undefined) localPlayer.health = p.h;
                     localPlayer.shield = p.sh || 0;
                     localPlayer.weapon = p.w || 'pistol';
                     localPlayer.alive = p.v === 1;
-                    localPlayer.kills = p.k;
+                    if (p.k !== undefined) localPlayer.kills = p.k;
                     localPlayer.color = p.c;
                 } else {
-                    // Push state for interpolation
+                    // Get existing state for defaults (distant players may have reduced data)
+                    const existing = entityStates[p.i] && entityStates[p.i].length > 0
+                        ? entityStates[p.i][entityStates[p.i].length - 1]
+                        : null;
+
+                    // Push state for interpolation (use existing values as defaults for partial updates)
                     pushEntityState(p.i, {
                         x: p.x,
                         y: p.y,
-                        angle: p.a,
-                        health: p.h,
-                        shield: p.sh || 0,
-                        weapon: p.w || 'pistol',
+                        angle: p.a !== undefined ? p.a : (existing ? existing.angle : 0),
+                        health: p.h !== undefined ? p.h : (existing ? existing.health : 100),
+                        shield: p.sh !== undefined ? p.sh : (existing ? existing.shield : 0),
+                        weapon: p.w || (existing ? existing.weapon : 'pistol'),
                         alive: p.v === 1,
                         color: p.c,
                         name: p.n,
-                        kills: p.k,
-                        character: p.ch || 'claude'
+                        kills: p.k !== undefined ? p.k : (existing ? existing.kills : 0),
+                        character: p.ch || (existing ? existing.character : 'claude')
                     });
                 }
             }
@@ -1264,13 +1270,20 @@ function drawArena() {
     const dots = '.'.repeat(dotPhase);
     ctx.fillText(dots, left + 75, top + 25);
 
-    // 5. Storm pulse effect outside the box
-    const pulse = Math.sin(Date.now() / 1000) * 0.03 + 0.05;
-    ctx.fillStyle = `rgba(218, 119, 86, ${pulse})`;
-    ctx.fillRect(-camera.x - 500, -camera.y - 500, ARENA_SIZE + 1000, top + 500);
-    ctx.fillRect(-camera.x - 500, top + size, ARENA_SIZE + 1000, ARENA_SIZE + 1000);
-    ctx.fillRect(-camera.x - 500, top, left + 500, size);
-    ctx.fillRect(left + size, top, ARENA_SIZE + 1000, size);
+    // 5. Storm pulse effect outside the box (only during active phase)
+    if (gameState.phase === 'active') {
+        const pulse = Math.sin(Date.now() / 1000) * 0.03 + 0.05;
+        ctx.fillStyle = `rgba(218, 119, 86, ${pulse})`;
+
+        // Top strip (above the arena)
+        ctx.fillRect(0, 0, canvas.width, top);
+        // Bottom strip (below the arena)
+        ctx.fillRect(0, top + size, canvas.width, canvas.height - (top + size));
+        // Left strip (left of the arena, between top and bottom)
+        ctx.fillRect(0, top, left, size);
+        // Right strip (right of the arena, between top and bottom)
+        ctx.fillRect(left + size, top, canvas.width - (left + size), size);
+    }
 }
 
 function drawPlayers() {
