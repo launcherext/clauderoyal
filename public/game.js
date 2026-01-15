@@ -401,6 +401,12 @@ const movement = {
 };
 
 function processLocalInput(keys, dt) {
+    // Initialize movement values if undefined
+    if (!isFinite(movement.vx)) movement.vx = 0;
+    if (!isFinite(movement.vy)) movement.vy = 0;
+    if (!isFinite(movement.recoilX)) movement.recoilX = 0;
+    if (!isFinite(movement.recoilY)) movement.recoilY = 0;
+
     // Get input direction
     let inputX = 0, inputY = 0;
     if (keys.w) inputY -= 1;
@@ -439,6 +445,10 @@ function processLocalInput(keys, dt) {
     movement.recoilX *= movement.recoilDecay;
     movement.recoilY *= movement.recoilDecay;
 
+    // Kill tiny recoil
+    if (Math.abs(movement.recoilX) < 0.01) movement.recoilX = 0;
+    if (Math.abs(movement.recoilY) < 0.01) movement.recoilY = 0;
+
     return { dx: movement.vx, dy: movement.vy };
 }
 
@@ -449,12 +459,16 @@ function applyInput(player, input) {
 
 // Add recoil when shooting
 function applyRecoil(amount) {
-    const recoilAngle = localPlayer.angle + Math.PI; // Opposite of aim
-    movement.recoilX += Math.cos(recoilAngle) * amount;
-    movement.recoilY += Math.sin(recoilAngle) * amount;
+    if (!amount || !isFinite(amount)) return;
+
+    const recoilAngle = (localPlayer.angle || 0) + Math.PI; // Opposite of aim
+    movement.recoilX = (movement.recoilX || 0) + Math.cos(recoilAngle) * amount;
+    movement.recoilY = (movement.recoilY || 0) + Math.sin(recoilAngle) * amount;
 
     // Also add screen shake
-    addScreenShake(amount * 2, 80);
+    if (typeof addScreenShake === 'function') {
+        addScreenShake(amount * 1.5, 80);
+    }
 }
 
 function reconcileWithServer(serverX, serverY, serverSeq) {
@@ -1242,9 +1256,11 @@ function updateLocalPlayer(dt) {
     // Apply movement (including momentum decay)
     applyInput(localPlayer, input);
 
-    // Apply visual recoil offset
-    localPlayer.x += movement.recoilX;
-    localPlayer.y += movement.recoilY;
+    // Apply visual recoil offset (guarded)
+    if (isFinite(movement.recoilX) && isFinite(movement.recoilY)) {
+        localPlayer.x += movement.recoilX;
+        localPlayer.y += movement.recoilY;
+    }
 
     // Send to server if we're moving or recently moved
     const isMoving = Math.abs(movement.vx) > 0.1 || Math.abs(movement.vy) > 0.1;
@@ -1307,37 +1323,59 @@ const cameraConfig = {
 };
 
 function updateCamera() {
-    // Calculate camera lead based on velocity
-    const targetLeadX = movement.vx * cameraConfig.leadAmount / movement.maxSpeed;
-    const targetLeadY = movement.vy * cameraConfig.leadAmount / movement.maxSpeed;
+    // Guard against NaN values
+    const vx = movement.vx || 0;
+    const vy = movement.vy || 0;
+    const maxSpeed = movement.maxSpeed || 5;
 
-    // Smooth the lead
-    cameraConfig.currentLead.x = lerp(cameraConfig.currentLead.x, targetLeadX, cameraConfig.leadSmoothing);
-    cameraConfig.currentLead.y = lerp(cameraConfig.currentLead.y, targetLeadY, cameraConfig.leadSmoothing);
+    // Calculate camera lead based on velocity
+    const targetLeadX = (vx * cameraConfig.leadAmount) / maxSpeed;
+    const targetLeadY = (vy * cameraConfig.leadAmount) / maxSpeed;
+
+    // Smooth the lead (guard against NaN)
+    if (isFinite(targetLeadX) && isFinite(targetLeadY)) {
+        cameraConfig.currentLead.x = lerp(cameraConfig.currentLead.x, targetLeadX, cameraConfig.leadSmoothing);
+        cameraConfig.currentLead.y = lerp(cameraConfig.currentLead.y, targetLeadY, cameraConfig.leadSmoothing);
+    }
 
     // Target camera position with lead
-    targetCamera.x = localPlayer.x - canvas.width / 2 + cameraConfig.currentLead.x;
-    targetCamera.y = localPlayer.y - canvas.height / 2 + cameraConfig.currentLead.y;
+    targetCamera.x = localPlayer.x - canvas.width / 2 + (cameraConfig.currentLead.x || 0);
+    targetCamera.y = localPlayer.y - canvas.height / 2 + (cameraConfig.currentLead.y || 0);
 
     // Smooth camera movement
     camera.x = lerp(camera.x, targetCamera.x, cameraConfig.baseSmoothing);
     camera.y = lerp(camera.y, targetCamera.y, cameraConfig.baseSmoothing);
+
+    // Final NaN guard
+    if (!isFinite(camera.x)) camera.x = localPlayer.x - canvas.width / 2;
+    if (!isFinite(camera.y)) camera.y = localPlayer.y - canvas.height / 2;
 }
 
 // ============================================================================
 // RENDERING
 // ============================================================================
 function drawArena() {
+    // Guard against invalid camera/arena values
+    if (!isFinite(camera.x) || !isFinite(camera.y)) {
+        camera.x = 0;
+        camera.y = 0;
+    }
+
     const center = ARENA_SIZE / 2;
     const arenaScreenX = center - camera.x;
     const arenaScreenY = center - camera.y;
-    const arenaHalfSize = gameState.arenaSize / 2;
+    const arenaHalfSize = (gameState.arenaSize || ARENA_SIZE) / 2;
     const cornerRadius = 24; // Rounded corners like Claude chat box
 
     // Calculate square bounds
     const left = arenaScreenX - arenaHalfSize;
     const top = arenaScreenY - arenaHalfSize;
     const size = arenaHalfSize * 2;
+
+    // Guard against NaN values that would crash gradient creation
+    if (!isFinite(left) || !isFinite(top) || !isFinite(size) || size <= 0) {
+        return; // Skip rendering this frame
+    }
 
     // 1. Draw storm void OUTSIDE the square (dark terminal background)
     ctx.fillStyle = 'rgba(30, 28, 26, 0.95)';
@@ -1909,19 +1947,24 @@ function drawCrosshair() {
     if (!localPlayer.alive || isSpectator) return;
 
     // Dynamic crosshair that reacts to movement/shooting
-    const spread = Math.sqrt(movement.vx * movement.vx + movement.vy * movement.vy) * 3;
-    const recoilSpread = (Math.abs(movement.recoilX) + Math.abs(movement.recoilY)) * 5;
-    const totalSpread = 8 + spread + recoilSpread;
+    const vx = movement.vx || 0;
+    const vy = movement.vy || 0;
+    const recoilX = movement.recoilX || 0;
+    const recoilY = movement.recoilY || 0;
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.lineWidth = 2;
+    const moveSpread = Math.sqrt(vx * vx + vy * vy) * 2;
+    const recoilSpread = (Math.abs(recoilX) + Math.abs(recoilY)) * 3;
+    const totalSpread = Math.min(25, 6 + moveSpread + recoilSpread); // Clamp max spread
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 1.5;
 
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
 
     // Four lines forming crosshair with gap in center
     const gap = totalSpread;
-    const len = 12;
+    const len = 8;
 
     // Top
     ctx.beginPath();
@@ -1948,9 +1991,9 @@ function drawCrosshair() {
     ctx.stroke();
 
     // Center dot
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
     ctx.beginPath();
-    ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 1.5, 0, Math.PI * 2);
     ctx.fill();
 }
 
