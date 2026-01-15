@@ -9,8 +9,10 @@ const HELIUS_RPC = process.env.HELIUS_RPC_URL || `https://mainnet.helius-rpc.com
 
 // Known safe program IDs for pump.fun operations
 // SECURITY: Only sign transactions that interact with these programs
+// Sources: https://solscan.io/account/6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P
 const ALLOWED_PROGRAMS = [
-    '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P',  // Pump.fun program
+    '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P',  // Pump.fun main program
+    'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',  // Pump.fun AMM program
     'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', // SPL Token
     'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL', // Associated Token
     '11111111111111111111111111111111',              // System Program
