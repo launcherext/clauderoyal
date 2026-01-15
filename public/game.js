@@ -435,19 +435,19 @@ let inputSequence = 0;
 const pendingInputs = []; // Inputs sent but not yet acknowledged
 
 // ============================================================================
-// SECRET SAUCE: MOMENTUM-BASED MOVEMENT - OPTIMIZED FOR RESPONSIVENESS
+// SECRET SAUCE: MOMENTUM-BASED MOVEMENT - BALANCED FOR RESPONSIVENESS
 // ============================================================================
 const movement = {
     vx: 0,              // Current velocity X
     vy: 0,              // Current velocity Y
-    acceleration: 2.0,  // HIGHER = more responsive (was 1.2)
-    friction: 0.75,     // LOWER = less slide, snappier stop (was 0.82)
+    acceleration: 1.4,  // Slightly higher than original (was 1.2)
+    friction: 0.80,     // Slightly tighter than original (was 0.82)
     maxSpeed: 5,        // Max movement speed
 
     // Visual recoil
     recoilX: 0,
     recoilY: 0,
-    recoilDecay: 0.75,  // Faster recoil recovery
+    recoilDecay: 0.8,   // Original value
 
     // Aim smoothing (not used - instant aim)
     targetAngle: 0,
@@ -1339,11 +1339,8 @@ function updateLocalPlayer(dt) {
     // Apply movement (including momentum decay)
     applyInput(localPlayer, input);
 
-    // Apply visual recoil offset (guarded)
-    if (isFinite(movement.recoilX) && isFinite(movement.recoilY)) {
-        localPlayer.x += movement.recoilX;
-        localPlayer.y += movement.recoilY;
-    }
+    // NOTE: Recoil is now VISUAL ONLY - applied in camera offset, not position
+    // This prevents jitter from position oscillation
 
     // Direct aim (no smoothing - instant response)
     const screenX = localPlayer.x - camera.x;
@@ -1390,12 +1387,12 @@ function updateLocalPlayer(dt) {
 }
 
 // ============================================================================
-// SECRET SAUCE: CAMERA LEAD + DEADZONE - OPTIMIZED FOR RESPONSIVENESS
+// SECRET SAUCE: CAMERA LEAD + DEADZONE - BALANCED FOR RESPONSIVENESS
 // ============================================================================
 const cameraConfig = {
-    leadAmount: 35,      // Reduced lead for tighter feel
-    leadSmoothing: 0.15, // More responsive lead
-    baseSmoothing: 0.35, // MUCH snappier camera follow (was 0.18)
+    leadAmount: 40,      // Moderate lead
+    leadSmoothing: 0.12, // Smooth lead transitions
+    baseSmoothing: 0.22, // Responsive but stable (was 0.18)
     currentLead: { x: 0, y: 0 }
 };
 
@@ -1415,9 +1412,13 @@ function updateCamera() {
         cameraConfig.currentLead.y = lerp(cameraConfig.currentLead.y, targetLeadY, cameraConfig.leadSmoothing);
     }
 
-    // Target camera position with lead
-    targetCamera.x = localPlayer.x - canvas.width / 2 + (cameraConfig.currentLead.x || 0);
-    targetCamera.y = localPlayer.y - canvas.height / 2 + (cameraConfig.currentLead.y || 0);
+    // Get recoil offset (visual only - doesn't affect actual position)
+    const recoilX = isFinite(movement.recoilX) ? movement.recoilX : 0;
+    const recoilY = isFinite(movement.recoilY) ? movement.recoilY : 0;
+
+    // Target camera position with lead + recoil offset
+    targetCamera.x = localPlayer.x - canvas.width / 2 + (cameraConfig.currentLead.x || 0) + recoilX;
+    targetCamera.y = localPlayer.y - canvas.height / 2 + (cameraConfig.currentLead.y || 0) + recoilY;
 
     // Smooth camera movement
     camera.x = lerp(camera.x, targetCamera.x, cameraConfig.baseSmoothing);
