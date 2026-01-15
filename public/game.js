@@ -107,6 +107,61 @@ const INTERPOLATION_BUFFER_MS = 100; // Render 100ms behind for smooth lerp
 const RECONCILIATION_THRESHOLD = 50; // Snap if server diff > this
 
 // ============================================================================
+// CLIENT-SIDE BULLET PREDICTION - Instant visual feedback
+// ============================================================================
+const predictedBullets = [];
+let localBulletId = 0;
+const PREDICTED_BULLET_LIFETIME = 150; // ms before server confirms/denies
+
+function spawnPredictedBullet(x, y, angle, weapon) {
+    const wpn = WEAPONS[weapon] || { bulletSpeed: 18, spread: 0, bulletsPerShot: 1, color: '#ffff00' };
+
+    for (let i = 0; i < wpn.bulletsPerShot; i++) {
+        const spread = (Math.random() - 0.5) * (wpn.spread || 0);
+        const finalAngle = angle + spread;
+
+        predictedBullets.push({
+            id: localBulletId++,
+            x: x + Math.cos(finalAngle) * 25,
+            y: y + Math.sin(finalAngle) * 25,
+            vx: Math.cos(finalAngle) * wpn.bulletSpeed,
+            vy: Math.sin(finalAngle) * wpn.bulletSpeed,
+            spawnTime: performance.now(),
+            color: wpn.color || '#ffff00'
+        });
+    }
+}
+
+function updatePredictedBullets(dt) {
+    const now = performance.now();
+    for (let i = predictedBullets.length - 1; i >= 0; i--) {
+        const b = predictedBullets[i];
+
+        // Move bullet
+        b.x += b.vx * (dt / 16.67); // Normalize to 60fps
+        b.y += b.vy * (dt / 16.67);
+
+        // Remove if too old (server should have taken over by now)
+        // or if out of bounds
+        const age = now - b.spawnTime;
+        if (age > PREDICTED_BULLET_LIFETIME ||
+            b.x < 0 || b.x > ARENA_SIZE ||
+            b.y < 0 || b.y > ARENA_SIZE) {
+            predictedBullets.splice(i, 1);
+        }
+    }
+}
+
+// ============================================================================
+// INPUT BUFFER - Never lose a shot during cooldown
+// ============================================================================
+const inputBuffer = {
+    pendingShot: false,
+    shotTime: 0,
+    maxBuffer: 150 // Buffer shots up to 150ms before cooldown ends
+};
+
+// ============================================================================
 // ASSET LOADING
 // ============================================================================
 let assetsLoaded = 0;
@@ -380,24 +435,24 @@ let inputSequence = 0;
 const pendingInputs = []; // Inputs sent but not yet acknowledged
 
 // ============================================================================
-// SECRET SAUCE: MOMENTUM-BASED MOVEMENT
+// SECRET SAUCE: MOMENTUM-BASED MOVEMENT - OPTIMIZED FOR RESPONSIVENESS
 // ============================================================================
 const movement = {
     vx: 0,              // Current velocity X
     vy: 0,              // Current velocity Y
-    acceleration: 1.2,  // Snappy acceleration (higher = more responsive)
-    friction: 0.82,     // Quick stop (lower = less slide, more control)
+    acceleration: 2.0,  // HIGHER = more responsive (was 1.2)
+    friction: 0.75,     // LOWER = less slide, snappier stop (was 0.82)
     maxSpeed: 5,        // Max movement speed
 
     // Visual recoil
     recoilX: 0,
     recoilY: 0,
-    recoilDecay: 0.8,
+    recoilDecay: 0.75,  // Faster recoil recovery
 
-    // Aim smoothing (lower = more responsive)
+    // Aim smoothing (not used - instant aim)
     targetAngle: 0,
     currentAngle: 0,
-    aimSmoothing: 0.15, // Very responsive aim
+    aimSmoothing: 0.15,
 };
 
 function processLocalInput(keys, dt) {
@@ -1178,39 +1233,67 @@ document.addEventListener('click', (e) => {
     }
 
     const now = Date.now();
-    if (localPlayer.alive && ws && ws.readyState === 1 && now - lastShootTime > SHOOT_COOLDOWN) {
-        lastShootTime = now;
-        ws.send(JSON.stringify({ t: 'sh' }));
+    const timeSinceLast = now - lastShootTime;
+    const currentWeapon = localPlayer.weapon || 'pistol';
+    const weaponDef = WEAPONS[currentWeapon] || { fireRate: 300 };
+    const cooldown = weaponDef.fireRate || 300;
 
-        // SECRET SAUCE: Weapon recoil
-        const currentWeapon = localPlayer.weapon || 'pistol';
-        const recoilAmount = weaponRecoil[currentWeapon] || 1.5;
-        applyRecoil(recoilAmount);
-
-        // Enhanced muzzle flash particles
-        const muzzleX = localPlayer.x + Math.cos(localPlayer.angle) * 30;
-        const muzzleY = localPlayer.y + Math.sin(localPlayer.angle) * 30;
-
-        // Primary flash
-        particlePool.spawnBurst(muzzleX, muzzleY, 10, 4, 150, 5, '#ffcc66');
-        // Secondary sparks
-        particlePool.spawnBurst(muzzleX, muzzleY, 5, 2, 100, 3, '#ff9933');
-
-        // Spawn bullet trail particles along aim direction
-        for (let i = 1; i <= 3; i++) {
-            const trailX = muzzleX + Math.cos(localPlayer.angle) * (i * 15);
-            const trailY = muzzleY + Math.sin(localPlayer.angle) * (i * 15);
-            particlePool.spawnBurst(trailX, trailY, 2, 1, 80, 2, '#e8a87c');
+    // Check if we can shoot
+    if (localPlayer.alive && ws && ws.readyState === 1) {
+        // OPTIMIZED: Slightly more lenient client-side check (server is authoritative)
+        // Allow shot if within 80% of cooldown (server validates exact timing)
+        if (timeSinceLast >= cooldown * 0.8) {
+            executeShot(now, currentWeapon);
+        } else {
+            // Buffer the shot for later
+            inputBuffer.pendingShot = true;
+            inputBuffer.shotTime = now;
         }
     }
 });
+
+// Extracted shot execution for cleaner code + input buffer reuse
+function executeShot(now, currentWeapon) {
+    lastShootTime = now;
+
+    // Send to server IMMEDIATELY
+    ws.send(JSON.stringify({ t: 'sh' }));
+
+    // CLIENT-SIDE PREDICTION: Spawn predicted bullet INSTANTLY
+    spawnPredictedBullet(localPlayer.x, localPlayer.y, localPlayer.angle, currentWeapon);
+
+    // SECRET SAUCE: Weapon recoil
+    const recoilAmount = weaponRecoil[currentWeapon] || 1.5;
+    applyRecoil(recoilAmount);
+
+    // Enhanced muzzle flash particles - BIGGER and BRIGHTER
+    const muzzleX = localPlayer.x + Math.cos(localPlayer.angle) * 30;
+    const muzzleY = localPlayer.y + Math.sin(localPlayer.angle) * 30;
+
+    // Primary flash - more particles
+    particlePool.spawnBurst(muzzleX, muzzleY, 12, 5, 120, 6, '#ffcc66');
+    // Secondary sparks
+    particlePool.spawnBurst(muzzleX, muzzleY, 6, 3, 80, 4, '#ff9933');
+    // Core flash (bright white)
+    particlePool.spawn(muzzleX, muzzleY, 0, 0, 50, 8, '#ffffff');
+
+    // Spawn bullet trail particles along aim direction
+    for (let i = 1; i <= 3; i++) {
+        const trailX = muzzleX + Math.cos(localPlayer.angle) * (i * 15);
+        const trailY = muzzleY + Math.sin(localPlayer.angle) * (i * 15);
+        particlePool.spawnBurst(trailX, trailY, 2, 1, 80, 2, '#e8a87c');
+    }
+
+    // Clear buffer
+    inputBuffer.pendingShot = false;
+}
 
 // ============================================================================
 // UPDATE LOOP
 // ============================================================================
 // Smooth spectator camera transition
 let spectatorCameraTarget = { x: ARENA_SIZE / 2, y: ARENA_SIZE / 2 };
-let spectatorCameraLerp = 0.08; // Smooth follow speed
+let spectatorCameraLerp = 0.15; // Faster spectator camera (was 0.08)
 
 function updateLocalPlayer(dt) {
     if (!localPlayer.alive || isSpectator) {
@@ -1267,15 +1350,16 @@ function updateLocalPlayer(dt) {
     const screenY = localPlayer.y - camera.y;
     localPlayer.angle = Math.atan2(mouseY - screenY, mouseX - screenX);
 
-    // NETWORK OPTIMIZATION: Throttle movement updates, but always send aim
+    // NETWORK OPTIMIZATION: Aggressive updates for responsiveness
     const now = Date.now();
     const timeSinceLastSend = now - (localPlayer.lastNetworkSend || 0);
     const isMoving = Math.abs(movement.vx) > 0.1 || Math.abs(movement.vy) > 0.1;
     const angleDiff = Math.abs(localPlayer.angle - lastSentAngle);
 
-    // Send if: moving (throttled to 50ms) OR angle changed significantly (throttled to 33ms)
-    const shouldSendMove = isMoving && timeSinceLastSend > 50;
-    const shouldSendAim = angleDiff > ANGLE_THRESHOLD && timeSinceLastSend > 33;
+    // Send if: moving (throttled to 33ms = ~30Hz) OR angle changed significantly (20ms = 50Hz)
+    // Higher update rate = smoother multiplayer experience
+    const shouldSendMove = isMoving && timeSinceLastSend > 33;
+    const shouldSendAim = angleDiff > ANGLE_THRESHOLD && timeSinceLastSend > 20;
 
     if ((shouldSendMove || shouldSendAim) && ws && ws.readyState === 1) {
         localPlayer.lastNetworkSend = now;
@@ -1306,12 +1390,12 @@ function updateLocalPlayer(dt) {
 }
 
 // ============================================================================
-// SECRET SAUCE: CAMERA LEAD + DEADZONE
+// SECRET SAUCE: CAMERA LEAD + DEADZONE - OPTIMIZED FOR RESPONSIVENESS
 // ============================================================================
 const cameraConfig = {
-    leadAmount: 50,      // Subtle camera lead
-    leadSmoothing: 0.08, // Responsive lead
-    baseSmoothing: 0.18, // Snappier camera follow
+    leadAmount: 35,      // Reduced lead for tighter feel
+    leadSmoothing: 0.15, // More responsive lead
+    baseSmoothing: 0.35, // MUCH snappier camera follow (was 0.18)
     currentLead: { x: 0, y: 0 }
 };
 
@@ -1651,6 +1735,7 @@ function drawBullets() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
+    // Draw server-confirmed bullets
     for (const bullet of gameState.bullets) {
         const x = bullet.x - camera.x;
         const y = bullet.y - camera.y;
@@ -1688,6 +1773,29 @@ function drawBullets() {
         } else {
             ctx.fillStyle = '#da7756';
         }
+        ctx.fillText(letter, x, y);
+    }
+
+    // Draw PREDICTED bullets (local player's shots - instant feedback)
+    for (const bullet of predictedBullets) {
+        const x = bullet.x - camera.x;
+        const y = bullet.y - camera.y;
+
+        if (x < -20 || x > canvas.width + 20 || y < -20 || y > canvas.height + 20) continue;
+
+        const letterIndex = bullet.id % BULLET_LETTERS.length;
+        const letter = BULLET_LETTERS[letterIndex];
+        const angle = Math.atan2(bullet.vy, bullet.vx);
+
+        // Predicted bullets have slight glow to distinguish
+        ctx.font = 'bold 16px "Söhne", "SF Pro", monospace';
+
+        // Bright glow for predicted (shows instant feedback)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.fillText(letter, x + 1, y + 1);
+
+        // Bright white for local bullets
+        ctx.fillStyle = '#ffffff';
         ctx.fillText(letter, x, y);
     }
 }
@@ -1896,11 +2004,30 @@ function gameLoop(currentTime) {
     // Clear canvas (transparent to show CSS background)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Process buffered shot input
+    if (inputBuffer.pendingShot && localPlayer.alive) {
+        const now = Date.now();
+        const timeSinceLast = now - lastShootTime;
+        const currentWeapon = localPlayer.weapon || 'pistol';
+        const weaponDef = WEAPONS[currentWeapon] || { fireRate: 300 };
+        const cooldown = weaponDef.fireRate || 300;
+
+        // Execute buffered shot if cooldown elapsed
+        if (timeSinceLast >= cooldown) {
+            executeShot(now, currentWeapon);
+        }
+        // Clear buffer if too old (player gave up)
+        else if (now - inputBuffer.shotTime > inputBuffer.maxBuffer + cooldown) {
+            inputBuffer.pendingShot = false;
+        }
+    }
+
     // Update
     updateLocalPlayer(deltaTime / 1000);
     updateCamera();
     updateVisualEffects(deltaTime);
     particlePool.update(deltaTime);
+    updatePredictedBullets(deltaTime);
 
     // Apply screen shake to camera
     let shakeX = 0, shakeY = 0;
