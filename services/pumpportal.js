@@ -101,22 +101,28 @@ const HTTP_TIMEOUT_MS = 30000; // 30 second timeout for external API calls
 async function claimCreatorFees(priorityFee = 0.0001) {
     const masterPrivateKey = process.env.MASTER_WALLET_PRIVATE_KEY;
     if (!masterPrivateKey) {
-        console.log('Master wallet not configured for fee claiming');
+        console.log('[PUMPPORTAL] Master wallet not configured for fee claiming');
         return null;
     }
 
     const keypair = getKeypairFromPrivateKey(masterPrivateKey);
     if (!keypair) {
-        console.log('Invalid master wallet key');
+        console.log('[PUMPPORTAL] Invalid master wallet key');
         return null;
     }
 
+    const publicKey = keypair.publicKey.toBase58();
+    console.log(`[PUMPPORTAL] Attempting fee claim for wallet: ${publicKey.substring(0, 8)}...${publicKey.substring(publicKey.length - 4)}`);
+
+    // Local API only needs publicKey, action, and priorityFee
+    // 'pool' parameter is only for Lightning API
     const payload = JSON.stringify({
-        publicKey: keypair.publicKey.toBase58(),
+        publicKey: publicKey,
         action: 'collectCreatorFee',
-        priorityFee: priorityFee,
-        pool: 'pump'
+        priorityFee: priorityFee
     });
+
+    console.log('[PUMPPORTAL] Request payload:', JSON.stringify({ action: 'collectCreatorFee', priorityFee, publicKey: publicKey.substring(0, 8) + '...' }));
 
     return new Promise((resolve, reject) => {
         const req = https.request(PUMPPORTAL_LOCAL_API_URL, {
@@ -131,13 +137,15 @@ async function claimCreatorFees(priorityFee = 0.0001) {
             res.on('data', chunk => data += chunk);
             res.on('end', async () => {
                 try {
+                    console.log(`[PUMPPORTAL] Response status: ${res.statusCode}, data length: ${data.length}`);
+
                     // Response is raw transaction bytes
                     if (res.statusCode !== 200) {
                         try {
                             const errorData = JSON.parse(data);
-                            console.log('PumpPortal error:', errorData.error || data);
+                            console.log('[PUMPPORTAL] Error response:', errorData.error || errorData.message || data);
                         } catch {
-                            console.log('PumpPortal error (status', res.statusCode + '):', data.substring(0, 200));
+                            console.log('[PUMPPORTAL] Error (status ' + res.statusCode + '):', data.substring(0, 300));
                         }
                         resolve(null);
                         return;
@@ -145,7 +153,8 @@ async function claimCreatorFees(priorityFee = 0.0001) {
 
                     // Check if response is empty or too short to be a transaction
                     if (!data || data.length < 100) {
-                        console.log('[REWARD] No fees available to claim (empty response)');
+                        console.log('[PUMPPORTAL] No fees available to claim (response too short:', data.length, 'bytes)');
+                        if (data) console.log('[PUMPPORTAL] Short response content:', data.substring(0, 100));
                         resolve(null);
                         return;
                     }
@@ -154,17 +163,19 @@ async function claimCreatorFees(priorityFee = 0.0001) {
                     if (data.startsWith('{') || data.startsWith('[')) {
                         try {
                             const jsonResponse = JSON.parse(data);
+                            console.log('[PUMPPORTAL] JSON response received:', JSON.stringify(jsonResponse).substring(0, 300));
                             if (jsonResponse.error) {
-                                console.log('[REWARD] No fees to claim:', jsonResponse.error);
+                                console.log('[PUMPPORTAL] API error:', jsonResponse.error);
                             } else if (jsonResponse.message) {
-                                console.log('[REWARD] PumpPortal message:', jsonResponse.message);
-                            } else {
-                                console.log('[REWARD] Unexpected JSON response:', JSON.stringify(jsonResponse).substring(0, 200));
+                                console.log('[PUMPPORTAL] API message:', jsonResponse.message);
+                            } else if (jsonResponse.errors) {
+                                console.log('[PUMPPORTAL] API errors:', JSON.stringify(jsonResponse.errors));
                             }
                             resolve(null);
                             return;
                         } catch {
                             // Not valid JSON, continue to try as transaction
+                            console.log('[PUMPPORTAL] Response starts with JSON char but parse failed, treating as tx data');
                         }
                     }
 
@@ -200,7 +211,7 @@ async function claimCreatorFees(priorityFee = 0.0001) {
                     });
 
                     await connection.confirmTransaction(signature, 'confirmed');
-                    console.log('Creator fees claimed:', signature);
+                    console.log('[PUMPPORTAL] SUCCESS! Creator fees claimed:', signature);
                     resolve({ signature, success: true });
                 } catch (e) {
                     // Log more details for debugging
