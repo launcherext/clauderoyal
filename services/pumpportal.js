@@ -133,14 +133,49 @@ async function claimCreatorFees(priorityFee = 0.0001) {
                 try {
                     // Response is raw transaction bytes
                     if (res.statusCode !== 200) {
-                        const errorData = JSON.parse(data);
-                        console.log('PumpPortal error:', errorData.error || data);
+                        try {
+                            const errorData = JSON.parse(data);
+                            console.log('PumpPortal error:', errorData.error || data);
+                        } catch {
+                            console.log('PumpPortal error (status', res.statusCode + '):', data.substring(0, 200));
+                        }
                         resolve(null);
                         return;
                     }
 
+                    // Check if response is empty or too short to be a transaction
+                    if (!data || data.length < 100) {
+                        console.log('[REWARD] No fees available to claim (empty response)');
+                        resolve(null);
+                        return;
+                    }
+
+                    // Check if it's a JSON error response (PumpPortal sometimes returns 200 with error JSON)
+                    if (data.startsWith('{') || data.startsWith('[')) {
+                        try {
+                            const jsonResponse = JSON.parse(data);
+                            if (jsonResponse.error) {
+                                console.log('[REWARD] No fees to claim:', jsonResponse.error);
+                            } else if (jsonResponse.message) {
+                                console.log('[REWARD] PumpPortal message:', jsonResponse.message);
+                            } else {
+                                console.log('[REWARD] Unexpected JSON response:', JSON.stringify(jsonResponse).substring(0, 200));
+                            }
+                            resolve(null);
+                            return;
+                        } catch {
+                            // Not valid JSON, continue to try as transaction
+                        }
+                    }
+
                     // Deserialize the transaction
                     const txBuffer = Buffer.from(data, 'base64');
+                    if (txBuffer.length < 50) {
+                        console.log('[REWARD] Invalid transaction data (too short)');
+                        resolve(null);
+                        return;
+                    }
+
                     const tx = VersionedTransaction.deserialize(txBuffer);
 
                     // SECURITY (CU-2 fix): Verify transaction before signing
@@ -168,12 +203,10 @@ async function claimCreatorFees(priorityFee = 0.0001) {
                     console.log('Creator fees claimed:', signature);
                     resolve({ signature, success: true });
                 } catch (e) {
-                    // Might be JSON error response
-                    try {
-                        const errorData = JSON.parse(data);
-                        console.log('No fees to claim:', errorData.error || 'Unknown');
-                    } catch {
-                        console.log('Fee claim error:', e.message);
+                    // Log more details for debugging
+                    console.log('[REWARD] Fee claim error:', e.message);
+                    if (data && data.length < 500) {
+                        console.log('[REWARD] Response was:', data.substring(0, 200));
                     }
                     resolve(null);
                 }
