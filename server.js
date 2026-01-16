@@ -378,18 +378,18 @@ const CLAUDE_NPC = {
     isNPC: true,
     color: '#FF6B00', // Orange color
     character: 'claude',
-    // AI behavior settings
+    // AI behavior settings - BUFFED 10%
     aiState: 'hunting',      // hunting, fleeing, circling
     targetId: null,
     lastDecision: 0,
-    decisionInterval: 500,   // Reconsider target every 500ms
-    accuracy: 0.85,          // 85% accuracy
-    reactionTime: 150,       // ms before reacting
-    aggressionLevel: 0.7,    // How likely to chase vs flee
+    decisionInterval: 450,   // Faster decisions (was 500ms)
+    accuracy: 0.93,          // 93% accuracy (was 85%)
+    reactionTime: 135,       // Faster reactions (was 150ms)
+    aggressionLevel: 0.77,   // More aggressive (was 0.7)
 
     // Movement AI
     moveAngle: 0,
-    moveSpeed: 4.5,          // Slightly slower than players
+    moveSpeed: 4.95,         // Faster movement (was 4.5)
     dodgeTimer: 0,
     strafeDir: 1
 };
@@ -403,8 +403,8 @@ function spawnClaudeNPC() {
         x: ARENA_SIZE / 2 + (Math.random() - 0.5) * 2 * halfSize,
         y: ARENA_SIZE / 2 + (Math.random() - 0.5) * 2 * halfSize,
         angle: Math.random() * Math.PI * 2,
-        health: 165,           // Slightly tougher
-        shield: 30,            // Small shield advantage
+        health: 180,           // 10% buff (was 165)
+        shield: 35,            // 10% buff (was 30)
         weapon: 'pistol',      // Starts with pistol like everyone
         lastShot: 0,
         alive: true,
@@ -483,8 +483,8 @@ function updateClaudeNPC() {
         const dist = Math.sqrt(dx * dx + dy * dy);
         const angleToTarget = Math.atan2(dy, dx);
 
-        // Aim at target with moderate inaccuracy (~65% accuracy)
-        const aimError = (Math.random() - 0.5) * 0.45;
+        // Aim at target with improved accuracy (10% tighter spread)
+        const aimError = (Math.random() - 0.5) * 0.40;
         claude.angle = angleToTarget + aimError;
 
         // Movement based on AI state
