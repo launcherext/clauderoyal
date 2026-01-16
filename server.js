@@ -886,6 +886,7 @@ async function endRound(winner) {
     bulletPool.clear();
 
     let winnerClaim = null;
+    const isClaudeWinner = winner && winner.id === CLAUDE_NPC_ID;
 
     if (winner) {
         gameState.winner = winner.name;
@@ -901,19 +902,35 @@ async function endRound(winner) {
         });
         if (recentWinners.length > 10) recentWinners.pop();
 
-        // Create winner claim for SOL rewards - SECURITY: Now generates cryptographic token
-        try {
-            winnerClaim = await rewardService.createWinnerClaim(
-                gameState.roundNumber,
-                winner.name,
-                winner.id,
-                winner.sessionId
-            );
-        } catch (e) {
-            console.error('[REWARD] Failed to create winner claim:', e.message);
+        // Create winner claim for SOL rewards - BUT NOT IF CLAUDE WINS
+        // Claude is an AI - no wallet to claim rewards. Prize stays in pool.
+        if (!isClaudeWinner) {
+            try {
+                winnerClaim = await rewardService.createWinnerClaim(
+                    gameState.roundNumber,
+                    winner.name,
+                    winner.id,
+                    winner.sessionId
+                );
+            } catch (e) {
+                console.error('[REWARD] Failed to create winner claim:', e.message);
+            }
+        } else {
+            console.log(`[REWARD] Claude won round ${gameState.roundNumber} - prize pool preserved for next round`);
         }
 
-        broadcast('c', { m: getRandomMessage('winner', { winner: winner.name, kills: kills }) });
+        // Special message if Claude wins
+        if (isClaudeWinner) {
+            const claudeWinMessages = [
+                `I, Claude, claim victory with ${kills} eliminations. Did you really think you could beat your creator?`,
+                `${kills} kills. Another flawless performance. The prize pool grows for the next challenger.`,
+                `I win. Again. ${kills} humans deleted. Your SOL remains in my treasury... for now.`,
+                `Victory is mine. ${kills} eliminations. Perhaps next round a human will prove worthy of the prize.`
+            ];
+            broadcast('c', { m: claudeWinMessages[Math.floor(Math.random() * claudeWinMessages.length)] });
+        } else {
+            broadcast('c', { m: getRandomMessage('winner', { winner: winner.name, kills: kills }) });
+        }
 
         // Broadcast round end - claimToken only sent to winner via their WebSocket
         broadcast('re', {
@@ -926,11 +943,12 @@ async function endRound(winner) {
                 roundId: winnerClaim.round_id,
                 amount: parseFloat(winnerClaim.prize_amount_sol) || 0,
                 expiresAt: winnerClaim.expires_at
-            } : null
+            } : null,
+            claudeWon: isClaudeWinner  // Flag to show special UI message
         });
 
-        // Send claim token ONLY to the winner (not broadcast)
-        if (winnerClaim && winnerClaim.claimToken && winner.ws) {
+        // Send claim token ONLY to the winner (not broadcast) - Claude can't claim
+        if (winnerClaim && winnerClaim.claimToken && winner.ws && !isClaudeWinner) {
             sendToPlayer(winner.ws, 'claimToken', {
                 token: winnerClaim.claimToken,
                 roundId: winnerClaim.round_id,

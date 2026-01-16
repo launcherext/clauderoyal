@@ -997,7 +997,7 @@ function handleMessage(data) {
         case 're': // roundEnd
             currentClaim = data.claim || null;
             currentClaimToken = null; // Reset token, will be set by 'claimToken' message
-            showRoundEnd(data.w, data.wi, data.k, data.r, data.claim);
+            showRoundEnd(data.w, data.wi, data.k, data.r, data.claim, data.claudeWon);
             if (data.lb) updateLeaderboardUI(data.lb);
             break;
 
@@ -1060,7 +1060,7 @@ function showCountdown() {
 
 let roundEndInterval = null;
 
-function showRoundEnd(winner, winnerId, kills, round, claim) {
+function showRoundEnd(winner, winnerId, kills, round, claim, claudeWon = false) {
     const overlay = document.getElementById('roundEndOverlay');
     const winnerEl = document.getElementById('roundWinner');
     const killsEl = document.getElementById('roundKills');
@@ -1071,29 +1071,39 @@ function showRoundEnd(winner, winnerId, kills, round, claim) {
     overlay.classList.add('show');
 
     if (winner) {
-        winnerEl.textContent = `${winner} WINS!`;
-        killsEl.textContent = `${kills} kills`;
-
-        if (winnerId === playerId && claim) {
-            walletSection.classList.add('show');
-            if (prizeAmountEl) {
-                prizeAmountEl.textContent = `Prize: ${claim.amount.toFixed(4)} SOL`;
-            }
-            // Reset input and button state
-            document.getElementById('walletInput').value = '';
-            document.getElementById('claimBtn').disabled = false;
-            document.getElementById('claimBtn').textContent = 'CLAIM PRIZE';
-        } else {
+        // Special handling when Claude (AI) wins
+        if (claudeWon) {
+            winnerEl.textContent = `CLAUDE WINS!`;
+            winnerEl.style.color = '#da7756';
+            killsEl.textContent = `${kills} humans eliminated`;
+            timer.textContent = 'Prize pool preserved for next round. Can you defeat the AI?';
             walletSection.classList.remove('show');
+        } else {
+            winnerEl.textContent = `${winner} WINS!`;
+            winnerEl.style.color = ''; // Reset to default
+            killsEl.textContent = `${kills} kills`;
+
+            if (winnerId === playerId && claim) {
+                walletSection.classList.add('show');
+                if (prizeAmountEl) {
+                    prizeAmountEl.textContent = `Prize: ${claim.amount.toFixed(4)} SOL`;
+                }
+                // Reset input and button state
+                document.getElementById('walletInput').value = '';
+                document.getElementById('claimBtn').disabled = false;
+                document.getElementById('claimBtn').textContent = 'CLAIM PRIZE';
+            } else {
+                walletSection.classList.remove('show');
+            }
+            timer.textContent = 'Next round starting soon...';
         }
     } else {
         winnerEl.textContent = 'NO WINNER';
+        winnerEl.style.color = ''; // Reset to default
         killsEl.textContent = 'Everyone died!';
         walletSection.classList.remove('show');
+        timer.textContent = 'Next round starting soon...';
     }
-
-    // Timer updates from server state, no auto-close
-    timer.textContent = 'Next round starting soon...';
 }
 
 function closeRoundEndOverlay() {
