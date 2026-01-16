@@ -369,6 +369,199 @@ function generateSessionId() {
 }
 
 // ============================================================================
+// CLAUDE NPC - The AI boss that plays in every match
+// ============================================================================
+const CLAUDE_NPC_ID = 'claude-npc-boss';
+const CLAUDE_NPC = {
+    id: CLAUDE_NPC_ID,
+    name: 'Claude',
+    isNPC: true,
+    color: '#FF6B00', // Orange color
+    character: 'claude',
+    // AI behavior settings
+    aiState: 'hunting',      // hunting, fleeing, circling
+    targetId: null,
+    lastDecision: 0,
+    decisionInterval: 500,   // Reconsider target every 500ms
+    accuracy: 0.85,          // 85% accuracy
+    reactionTime: 150,       // ms before reacting
+    aggressionLevel: 0.7,    // How likely to chase vs flee
+
+    // Movement AI
+    moveAngle: 0,
+    moveSpeed: 4.5,          // Slightly slower than players
+    dodgeTimer: 0,
+    strafeDir: 1
+};
+
+function spawnClaudeNPC() {
+    const halfSize = ARENA_SIZE / 2 - 100;
+    const npc = {
+        id: CLAUDE_NPC_ID,
+        sessionId: 'npc-session',
+        name: 'Claude',
+        x: ARENA_SIZE / 2 + (Math.random() - 0.5) * 2 * halfSize,
+        y: ARENA_SIZE / 2 + (Math.random() - 0.5) * 2 * halfSize,
+        angle: Math.random() * Math.PI * 2,
+        health: 200,           // Claude is tougher
+        shield: 50,            // Starts with some shield
+        weapon: 'smg',         // Claude prefers SMG
+        lastShot: 0,
+        alive: true,
+        color: '#FF6B00',      // Bright orange
+        character: 'claude',
+        kills: 0,
+        isNPC: true,
+        ws: null,              // No websocket - it's an NPC
+
+        // AI state
+        aiState: 'hunting',
+        targetId: null,
+        lastDecision: 0,
+        moveAngle: Math.random() * Math.PI * 2,
+        dodgeTimer: 0,
+        strafeDir: 1,
+        lastDodge: 0
+    };
+
+    gameState.players[CLAUDE_NPC_ID] = npc;
+    broadcast('c', { m: "I have entered the arena. Let's see what you've got." });
+    return npc;
+}
+
+function updateClaudeNPC() {
+    const claude = gameState.players[CLAUDE_NPC_ID];
+    if (!claude || !claude.alive || gameState.phase !== 'active') return;
+
+    const now = Date.now();
+    const players = Object.values(gameState.players).filter(p =>
+        p.alive && p.id !== CLAUDE_NPC_ID
+    );
+
+    if (players.length === 0) return;
+
+    // Decision making - pick target
+    if (now - claude.lastDecision > 500) {
+        claude.lastDecision = now;
+
+        // Find nearest player
+        let nearest = null;
+        let nearestDist = Infinity;
+
+        for (const p of players) {
+            const dx = p.x - claude.x;
+            const dy = p.y - claude.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearest = p;
+            }
+        }
+
+        claude.targetId = nearest ? nearest.id : null;
+
+        // Decide AI state based on health and distance
+        if (claude.health < 50) {
+            claude.aiState = 'fleeing';
+        } else if (nearestDist < 150) {
+            claude.aiState = 'circling';
+        } else {
+            claude.aiState = 'hunting';
+        }
+
+        // Random strafe direction change
+        if (Math.random() < 0.3) {
+            claude.strafeDir *= -1;
+        }
+    }
+
+    const target = claude.targetId ? gameState.players[claude.targetId] : null;
+
+    if (target && target.alive) {
+        const dx = target.x - claude.x;
+        const dy = target.y - claude.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angleToTarget = Math.atan2(dy, dx);
+
+        // Aim at target with some inaccuracy
+        const aimError = (Math.random() - 0.5) * 0.3 * (1 - 0.85);
+        claude.angle = angleToTarget + aimError;
+
+        // Movement based on AI state
+        switch (claude.aiState) {
+            case 'hunting':
+                // Move toward target
+                claude.moveAngle = angleToTarget;
+                break;
+
+            case 'fleeing':
+                // Move away from target
+                claude.moveAngle = angleToTarget + Math.PI;
+                break;
+
+            case 'circling':
+                // Strafe around target
+                claude.moveAngle = angleToTarget + (Math.PI / 2) * claude.strafeDir;
+                break;
+        }
+
+        // Apply movement
+        const speed = claude.aiState === 'fleeing' ? 5 : 4;
+        claude.x += Math.cos(claude.moveAngle) * speed;
+        claude.y += Math.sin(claude.moveAngle) * speed;
+
+        // Stay in arena bounds
+        const center = ARENA_SIZE / 2;
+        const arenaHalfSize = gameState.arenaSize / 2 - 50;
+        claude.x = Math.max(center - arenaHalfSize, Math.min(center + arenaHalfSize, claude.x));
+        claude.y = Math.max(center - arenaHalfSize, Math.min(center + arenaHalfSize, claude.y));
+
+        // Shooting - Claude shoots when in range
+        if (dist < 400) {
+            const weapon = WEAPONS[claude.weapon] || WEAPONS.smg;
+            if (now - claude.lastShot >= weapon.fireRate) {
+                claude.lastShot = now;
+
+                // Fire bullets
+                for (let i = 0; i < weapon.bulletsPerShot; i++) {
+                    const spread = (Math.random() - 0.5) * weapon.spread;
+                    const bulletAngle = claude.angle + spread;
+                    const bullet = bulletPool.acquire(
+                        CLAUDE_NPC_ID,
+                        'Claude',
+                        claude.x + Math.cos(bulletAngle) * 25,
+                        claude.y + Math.sin(bulletAngle) * 25,
+                        Math.cos(bulletAngle) * weapon.bulletSpeed,
+                        Math.sin(bulletAngle) * weapon.bulletSpeed,
+                        '#FF6B00' // Orange bullets for Claude
+                    );
+                    if (bullet) {
+                        bullet.damage = weapon.damage;
+                        bullet.weaponId = weapon.id;
+                    }
+                }
+            }
+        }
+    } else {
+        // No target - wander randomly
+        if (Math.random() < 0.02) {
+            claude.moveAngle = Math.random() * Math.PI * 2;
+        }
+        claude.x += Math.cos(claude.moveAngle) * 2;
+        claude.y += Math.sin(claude.moveAngle) * 2;
+
+        // Stay in arena
+        const center = ARENA_SIZE / 2;
+        const arenaHalfSize = gameState.arenaSize / 2 - 50;
+        claude.x = Math.max(center - arenaHalfSize, Math.min(center + arenaHalfSize, claude.x));
+        claude.y = Math.max(center - arenaHalfSize, Math.min(center + arenaHalfSize, claude.y));
+    }
+
+    // Pickup loot
+    checkLootPickup(claude);
+}
+
+// ============================================================================
 // GAME STATE
 // ============================================================================
 let leaderboard = {};
@@ -582,7 +775,8 @@ function broadcastGameState() {
                     v: p.alive ? 1 : 0,
                     c: p.color,
                     ch: p.character || 'claude',
-                    k: p.kills || 0
+                    k: p.kills || 0,
+                    npc: p.isNPC ? 1 : 0
                 });
             } else {
                 // Minimal update for distant players (position only for minimap)
@@ -592,7 +786,8 @@ function broadcastGameState() {
                     x: Math.round(p.x),
                     y: Math.round(p.y),
                     v: p.alive ? 1 : 0,
-                    c: p.color
+                    c: p.color,
+                    npc: p.isNPC ? 1 : 0
                 });
             }
         }
@@ -779,6 +974,11 @@ function startRound() {
     // Spawn loot for this round
     spawnInitialLoot();
 
+    // Remove old Claude NPC if exists
+    if (gameState.players[CLAUDE_NPC_ID]) {
+        delete gameState.players[CLAUDE_NPC_ID];
+    }
+
     const players = Object.values(gameState.players);
     for (const p of players) {
         p.alive = true;
@@ -793,6 +993,9 @@ function startRound() {
         p.x = ARENA_SIZE / 2 + (Math.random() - 0.5) * 2 * halfSize;
         p.y = ARENA_SIZE / 2 + (Math.random() - 0.5) * 2 * halfSize;
     }
+
+    // Spawn Claude NPC - the AI boss
+    spawnClaudeNPC();
 
     broadcast('c', { m: getRandomMessage('gameStart', { round: gameState.roundNumber }) });
     broadcast('rs', { r: gameState.roundNumber, wp: WEAPONS }); // Send weapon defs on round start
@@ -1115,6 +1318,9 @@ function gameLoop() {
         }
 
         let collisionChecks = 0;
+
+        // Update Claude NPC AI
+        updateClaudeNPC();
 
         // Rebuild spatial grid for O(1) collision lookups
         playerGrid.rebuild(gameState.players);

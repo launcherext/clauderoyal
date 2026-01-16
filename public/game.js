@@ -110,9 +110,15 @@ const RECONCILIATION_THRESHOLD = 50; // Snap if server diff > this
 // ============================================================================
 const predictedBullets = [];
 let localBulletId = 0;
-const PREDICTED_BULLET_LIFETIME = 150; // ms before server confirms/denies
+const PREDICTED_BULLET_LIFETIME = 100; // Reduced - server confirms quickly
+const MAX_PREDICTED_BULLETS = 20; // Cap to prevent memory issues
 
 function spawnPredictedBullet(x, y, angle, weapon) {
+    // Cap predicted bullets to prevent pile-up during heavy combat
+    if (predictedBullets.length >= MAX_PREDICTED_BULLETS) {
+        predictedBullets.shift(); // Remove oldest
+    }
+
     const wpn = WEAPONS[weapon] || { bulletSpeed: 18, spread: 0, bulletsPerShot: 1, color: '#ffff00' };
 
     for (let i = 0; i < wpn.bulletsPerShot; i++) {
@@ -274,9 +280,9 @@ const playerHighlightGlow = createGlowCanvas(40, 'rgb(218, 119, 86)');
 const arenaGlow = createGlowCanvas(30, 'rgb(218, 119, 86)');
 
 // ============================================================================
-// PARTICLE SYSTEM (Object Pool)
+// PARTICLE SYSTEM (Object Pool) - Sized for heavy combat
 // ============================================================================
-const PARTICLE_POOL_SIZE = 200;
+const PARTICLE_POOL_SIZE = 500; // Increased for 10+ players shooting
 const particlePool = {
     particles: [],
 
@@ -336,21 +342,29 @@ const particlePool = {
     },
 
     draw(ctx, camX, camY) {
-        for (const p of this.particles) {
-            if (p.active) {
-                const screenX = p.x - camX;
-                const screenY = p.y - camY;
+        // Performance optimization: batch similar operations
+        ctx.globalAlpha = 1;
+        let drawnCount = 0;
+        const maxDraw = 150; // Cap particles drawn per frame for performance
 
-                if (screenX < -50 || screenX > canvas.width + 50 ||
-                    screenY < -50 || screenY > canvas.height + 50) continue;
+        for (let i = 0; i < this.particles.length && drawnCount < maxDraw; i++) {
+            const p = this.particles[i];
+            if (!p.active) continue;
 
-                const alpha = p.life / p.maxLife;
-                ctx.globalAlpha = alpha;
-                ctx.fillStyle = p.color;
-                ctx.beginPath();
-                ctx.arc(screenX, screenY, p.size * alpha, 0, Math.PI * 2);
-                ctx.fill();
-            }
+            const screenX = p.x - camX;
+            const screenY = p.y - camY;
+
+            // Frustum culling
+            if (screenX < -50 || screenX > canvas.width + 50 ||
+                screenY < -50 || screenY > canvas.height + 50) continue;
+
+            const alpha = p.life / p.maxLife;
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, p.size * alpha, 0, Math.PI * 2);
+            ctx.fill();
+            drawnCount++;
         }
         ctx.globalAlpha = 1;
     }
@@ -934,11 +948,10 @@ function handleMessage(data) {
 
         case 'k': // kill
             addKillFeed(data.kr, data.v);
-            // Death particles
+            // Death particles - reduced for performance
             const victim = gameState.players.find(p => p.i === data.vi);
             if (victim) {
-                particlePool.spawnBurst(victim.x, victim.y, 25, 6, 1200, 10, '#da7756');
-                particlePool.spawnBurst(victim.x, victim.y, 15, 4, 800, 6, '#e8a87c');
+                particlePool.spawnBurst(victim.x, victim.y, 12, 5, 600, 8, '#da7756');
             }
 
             // SECRET SAUCE: Kill confirmation feedback
@@ -999,15 +1012,15 @@ function handleMessage(data) {
                 addHitMarker();
                 addDamageNumber(data.x, data.y - 40, data.d);
             }
-            // Spawn hit particles
-            particlePool.spawnBurst(data.x, data.y, 6, 3, 300, 4, '#da7756');
+            // Spawn hit particles - minimal for performance
+            particlePool.spawnBurst(data.x, data.y, 3, 2, 150, 3, '#da7756');
             break;
 
         case 'lp': // Loot pickup
-            // Particle effect at pickup location
+            // Particle effect at pickup location - minimal
             if (data.pi === playerId) {
                 const color = LOOT_COLORS[data.lt] || '#ffffff';
-                particlePool.spawnBurst(localPlayer.x, localPlayer.y, 10, 4, 500, 6, color);
+                particlePool.spawnBurst(localPlayer.x, localPlayer.y, 5, 3, 300, 4, color);
             }
             break;
     }
@@ -1326,23 +1339,13 @@ function executeShot(now, currentWeapon) {
     const recoilAmount = weaponRecoil[currentWeapon] || 1.5;
     applyRecoil(recoilAmount);
 
-    // Enhanced muzzle flash particles - BIGGER and BRIGHTER
+    // Muzzle flash particles - OPTIMIZED for performance
     const muzzleX = localPlayer.x + Math.cos(localPlayer.angle) * 30;
     const muzzleY = localPlayer.y + Math.sin(localPlayer.angle) * 30;
 
-    // Primary flash - more particles
-    particlePool.spawnBurst(muzzleX, muzzleY, 12, 5, 120, 6, '#ffcc66');
-    // Secondary sparks
-    particlePool.spawnBurst(muzzleX, muzzleY, 6, 3, 80, 4, '#ff9933');
-    // Core flash (bright white)
-    particlePool.spawn(muzzleX, muzzleY, 0, 0, 50, 8, '#ffffff');
-
-    // Spawn bullet trail particles along aim direction
-    for (let i = 1; i <= 3; i++) {
-        const trailX = muzzleX + Math.cos(localPlayer.angle) * (i * 15);
-        const trailY = muzzleY + Math.sin(localPlayer.angle) * (i * 15);
-        particlePool.spawnBurst(trailX, trailY, 2, 1, 80, 2, '#e8a87c');
-    }
+    // Reduced particle count for better performance in heavy combat
+    particlePool.spawnBurst(muzzleX, muzzleY, 5, 4, 80, 5, '#ffcc66');
+    particlePool.spawn(muzzleX, muzzleY, 0, 0, 40, 6, '#ffffff');
 
     // Clear buffer
     inputBuffer.pendingShot = false;
@@ -1647,13 +1650,52 @@ function drawPlayer(player, x, y, isLocal) {
     const kills = player.kills || player.k || 0;
     const health = player.health || player.h || 100;
     const character = player.character || player.ch || 'claude';
+    const isNPC = player.npc === 1 || player.isNPC || name === 'Claude';
     const radius = 28; // Slightly larger for character sprites
     const spriteSize = 56; // Size to render the character sprite
 
     ctx.save();
 
+    // BIG ORANGE GLOW for Claude NPC - Makes it stand out!
+    if (isNPC) {
+        // Pulsing glow effect
+        const pulseTime = Date.now() / 300;
+        const pulseScale = 1 + Math.sin(pulseTime) * 0.15;
+        const glowRadius = 60 * pulseScale;
+
+        // Outer orange glow (multiple layers for intensity)
+        const gradient = ctx.createRadialGradient(x, y, radius, x, y, glowRadius);
+        gradient.addColorStop(0, 'rgba(255, 107, 0, 0.6)');
+        gradient.addColorStop(0.5, 'rgba(255, 140, 0, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 165, 0, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Secondary inner glow
+        const innerGradient = ctx.createRadialGradient(x, y, 0, x, y, radius + 15);
+        innerGradient.addColorStop(0, 'rgba(255, 200, 100, 0.4)');
+        innerGradient.addColorStop(1, 'rgba(255, 107, 0, 0.2)');
+
+        ctx.fillStyle = innerGradient;
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 15, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Thick orange ring
+        ctx.strokeStyle = '#FF6B00';
+        ctx.lineWidth = 4;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 12, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    }
+
     // Outer glow ring
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = isNPC ? '#FF6B00' : color;
     ctx.lineWidth = 4;
     ctx.globalAlpha = 0.3;
     ctx.beginPath();
@@ -1665,6 +1707,8 @@ function drawPlayer(player, x, y, isLocal) {
     const charImg = characterImages[character];
     const charLoaded = characterImagesLoaded[character];
 
+    const displayColor = isNPC ? '#FF6B00' : color;
+
     if (charImg && charLoaded) {
         // Draw character sprite centered
         ctx.drawImage(
@@ -1675,9 +1719,9 @@ function drawPlayer(player, x, y, isLocal) {
             spriteSize
         );
 
-        // Colored border ring around sprite
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
+        // Colored border ring around sprite (orange for NPC)
+        ctx.strokeStyle = displayColor;
+        ctx.lineWidth = isNPC ? 4 : 3;
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.stroke();
@@ -1691,13 +1735,13 @@ function drawPlayer(player, x, y, isLocal) {
         ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = displayColor;
+        ctx.lineWidth = isNPC ? 4 : 3;
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.stroke();
 
-        ctx.fillStyle = color;
+        ctx.fillStyle = displayColor;
         ctx.font = 'bold 18px Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -1707,7 +1751,7 @@ function drawPlayer(player, x, y, isLocal) {
     ctx.restore();
 
     // Direction indicator (aim line)
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = displayColor;
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -1792,12 +1836,16 @@ function drawPlayer(player, x, y, isLocal) {
 const BULLET_LETTERS = ['C', 'L', 'A', 'U', 'D', 'E', '>', '<', '/', '*', '.', '·'];
 
 function drawBullets() {
+    const bulletCount = gameState.bullets.length;
+    const heavyCombat = bulletCount > 50; // Reduce detail in heavy combat
+
     ctx.font = 'bold 16px "Söhne", "SF Pro", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     // Draw server-confirmed bullets
-    for (const bullet of gameState.bullets) {
+    for (let i = 0; i < bulletCount; i++) {
+        const bullet = gameState.bullets[i];
         const x = bullet.x - camera.x;
         const y = bullet.y - camera.y;
 
@@ -1807,33 +1855,30 @@ function drawBullets() {
         const letterIndex = bullet.i % BULLET_LETTERS.length;
         const letter = BULLET_LETTERS[letterIndex];
 
-        // Bullet trail of smaller letters
-        const trailLength = 24;
-        const angle = Math.atan2(bullet.vy, bullet.vx);
+        // Skip trails in heavy combat for performance
+        if (!heavyCombat) {
+            const trailLength = 24;
+            const angle = Math.atan2(bullet.vy, bullet.vx);
 
-        // Draw fading trail letters
-        ctx.font = 'bold 10px "Söhne", monospace';
-        for (let i = 3; i > 0; i--) {
-            const trailX = x - Math.cos(angle) * (trailLength / 3) * i;
-            const trailY = y - Math.sin(angle) * (trailLength / 3) * i;
-            const alpha = 0.15 * (3 - i);
-            ctx.fillStyle = `rgba(218, 119, 86, ${alpha})`;
-            ctx.fillText(letter, trailX, trailY);
+            ctx.font = 'bold 10px "Söhne", monospace';
+            for (let j = 3; j > 0; j--) {
+                const trailX = x - Math.cos(angle) * (trailLength / 3) * j;
+                const trailY = y - Math.sin(angle) * (trailLength / 3) * j;
+                const alpha = 0.15 * (3 - j);
+                ctx.fillStyle = `rgba(218, 119, 86, ${alpha})`;
+                ctx.fillText(letter, trailX, trailY);
+            }
+            ctx.font = 'bold 16px "Söhne", "SF Pro", monospace';
         }
 
-        // Main bullet letter
-        ctx.font = 'bold 16px "Söhne", "SF Pro", monospace';
-
-        // Outer glow
-        ctx.fillStyle = 'rgba(218, 119, 86, 0.4)';
-        ctx.fillText(letter, x + 1, y + 1);
+        // Main bullet - simplified glow in heavy combat
+        if (!heavyCombat) {
+            ctx.fillStyle = 'rgba(218, 119, 86, 0.4)';
+            ctx.fillText(letter, x + 1, y + 1);
+        }
 
         // Alternate between white and orange based on bullet ID
-        if (bullet.i % 2 === 0) {
-            ctx.fillStyle = '#ffffff';
-        } else {
-            ctx.fillStyle = '#da7756';
-        }
+        ctx.fillStyle = (bullet.i % 2 === 0) ? '#ffffff' : '#da7756';
         ctx.fillText(letter, x, y);
     }
 
@@ -2026,12 +2071,32 @@ function drawMinimap() {
 
         const px = player.x * scale;
         const py = player.y * scale;
+        const isNPC = player.npc === 1 || player.n === 'Claude';
 
         if (player.i === playerId) {
             minimapCtx.fillStyle = '#da7756';
             minimapCtx.beginPath();
             minimapCtx.arc(px, py, 5, 0, Math.PI * 2);
             minimapCtx.fill();
+        } else if (isNPC) {
+            // Claude NPC - big orange pulsing glow on minimap
+            const pulse = Math.sin(Date.now() / 200) * 0.3 + 0.7;
+            minimapCtx.fillStyle = `rgba(255, 107, 0, ${pulse * 0.4})`;
+            minimapCtx.beginPath();
+            minimapCtx.arc(px, py, 8, 0, Math.PI * 2);
+            minimapCtx.fill();
+
+            minimapCtx.fillStyle = '#FF6B00';
+            minimapCtx.beginPath();
+            minimapCtx.arc(px, py, 5, 0, Math.PI * 2);
+            minimapCtx.fill();
+
+            // Orange ring
+            minimapCtx.strokeStyle = '#FF6B00';
+            minimapCtx.lineWidth = 1;
+            minimapCtx.beginPath();
+            minimapCtx.arc(px, py, 7, 0, Math.PI * 2);
+            minimapCtx.stroke();
         } else {
             minimapCtx.fillStyle = player.c || '#da7756';
             minimapCtx.beginPath();
