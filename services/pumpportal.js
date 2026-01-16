@@ -179,10 +179,23 @@ async function claimCreatorFees(priorityFee = 0.0001) {
                         }
                     }
 
+                    // Log raw response for debugging
+                    console.log('[PUMPPORTAL] Raw response preview:', data.substring(0, 200));
+
                     // Deserialize the transaction
-                    const txBuffer = Buffer.from(data, 'base64');
+                    let txBuffer;
+                    try {
+                        txBuffer = Buffer.from(data, 'base64');
+                    } catch (decodeErr) {
+                        console.log('[PUMPPORTAL] Base64 decode failed:', decodeErr.message);
+                        console.log('[PUMPPORTAL] Response is not valid base64, might be error page');
+                        resolve(null);
+                        return;
+                    }
+
                     if (txBuffer.length < 50) {
-                        console.log('[REWARD] Invalid transaction data (too short)');
+                        console.log('[REWARD] Invalid transaction data (decoded to', txBuffer.length, 'bytes, need 50+)');
+                        console.log('[PUMPPORTAL] This usually means no fees are available to claim');
                         resolve(null);
                         return;
                     }

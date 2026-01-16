@@ -568,6 +568,37 @@ function updateClaudeNPC() {
 let leaderboard = {};
 let recentWinners = [];
 
+// Win rate limiter - max 3 wins per IP per hour
+const WIN_RATE_LIMIT = 3;
+const WIN_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const winsByIp = new Map(); // IP -> [timestamps]
+
+function checkWinRateLimit(ip) {
+    if (!ip || ip === 'unknown') return { allowed: true, remaining: WIN_RATE_LIMIT };
+
+    const now = Date.now();
+    const wins = winsByIp.get(ip) || [];
+
+    // Filter to only wins within the window
+    const recentWins = wins.filter(ts => now - ts < WIN_RATE_WINDOW_MS);
+    winsByIp.set(ip, recentWins);
+
+    const remaining = WIN_RATE_LIMIT - recentWins.length;
+    return {
+        allowed: recentWins.length < WIN_RATE_LIMIT,
+        remaining: Math.max(0, remaining),
+        count: recentWins.length
+    };
+}
+
+function recordWin(ip) {
+    if (!ip || ip === 'unknown') return;
+
+    const wins = winsByIp.get(ip) || [];
+    wins.push(Date.now());
+    winsByIp.set(ip, wins);
+}
+
 let gameState = {
     players: {},
     arenaSize: ARENA_SIZE,
