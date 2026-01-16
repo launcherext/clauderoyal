@@ -133,36 +133,42 @@ async function claimCreatorFees(priorityFee = 0.0001) {
             },
             timeout: HTTP_TIMEOUT_MS // M-1 fix: Add timeout
         }, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
+            // Collect response as binary chunks (not string - that corrupts binary data)
+            const chunks = [];
+            res.on('data', chunk => chunks.push(chunk));
             res.on('end', async () => {
                 try {
-                    console.log(`[PUMPPORTAL] Response status: ${res.statusCode}, data length: ${data.length}`);
+                    // Combine all chunks into a single buffer
+                    const responseBuffer = Buffer.concat(chunks);
+                    console.log(`[PUMPPORTAL] Response status: ${res.statusCode}, data length: ${responseBuffer.length} bytes`);
 
                     // Response is raw transaction bytes
                     if (res.statusCode !== 200) {
+                        const errorText = responseBuffer.toString('utf8');
                         try {
-                            const errorData = JSON.parse(data);
-                            console.log('[PUMPPORTAL] Error response:', errorData.error || errorData.message || data);
+                            const errorData = JSON.parse(errorText);
+                            console.log('[PUMPPORTAL] Error response:', errorData.error || errorData.message || errorText);
                         } catch {
-                            console.log('[PUMPPORTAL] Error (status ' + res.statusCode + '):', data.substring(0, 300));
+                            console.log('[PUMPPORTAL] Error (status ' + res.statusCode + '):', errorText.substring(0, 300));
                         }
                         resolve(null);
                         return;
                     }
 
                     // Check if response is empty or too short to be a transaction
-                    if (!data || data.length < 100) {
-                        console.log('[PUMPPORTAL] No fees available to claim (response too short:', data.length, 'bytes)');
-                        if (data) console.log('[PUMPPORTAL] Short response content:', data.substring(0, 100));
+                    if (responseBuffer.length < 100) {
+                        console.log('[PUMPPORTAL] No fees available to claim (response too short:', responseBuffer.length, 'bytes)');
                         resolve(null);
                         return;
                     }
 
                     // Check if it's a JSON error response (PumpPortal sometimes returns 200 with error JSON)
-                    if (data.startsWith('{') || data.startsWith('[')) {
+                    // Check first byte for JSON indicators
+                    const firstByte = responseBuffer[0];
+                    if (firstByte === 0x7B || firstByte === 0x5B) { // '{' or '['
+                        const textData = responseBuffer.toString('utf8');
                         try {
-                            const jsonResponse = JSON.parse(data);
+                            const jsonResponse = JSON.parse(textData);
                             console.log('[PUMPPORTAL] JSON response received:', JSON.stringify(jsonResponse).substring(0, 300));
                             if (jsonResponse.error) {
                                 console.log('[PUMPPORTAL] API error:', jsonResponse.error);
@@ -179,23 +185,14 @@ async function claimCreatorFees(priorityFee = 0.0001) {
                         }
                     }
 
-                    // Log raw response for debugging
-                    console.log('[PUMPPORTAL] Raw response preview:', data.substring(0, 200));
+                    // Response should be raw binary transaction data
+                    console.log('[PUMPPORTAL] Processing as binary transaction data:', responseBuffer.length, 'bytes');
 
-                    // Deserialize the transaction
-                    let txBuffer;
-                    try {
-                        txBuffer = Buffer.from(data, 'base64');
-                    } catch (decodeErr) {
-                        console.log('[PUMPPORTAL] Base64 decode failed:', decodeErr.message);
-                        console.log('[PUMPPORTAL] Response is not valid base64, might be error page');
-                        resolve(null);
-                        return;
-                    }
+                    // Use the buffer directly - it's already binary
+                    const txBuffer = responseBuffer;
 
                     if (txBuffer.length < 50) {
-                        console.log('[REWARD] Invalid transaction data (decoded to', txBuffer.length, 'bytes, need 50+)');
-                        console.log('[PUMPPORTAL] This usually means no fees are available to claim');
+                        console.log('[REWARD] Invalid transaction data (buffer too small:', txBuffer.length, 'bytes)');
                         resolve(null);
                         return;
                     }
