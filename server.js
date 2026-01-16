@@ -403,8 +403,8 @@ function spawnClaudeNPC() {
         x: ARENA_SIZE / 2 + (Math.random() - 0.5) * 2 * halfSize,
         y: ARENA_SIZE / 2 + (Math.random() - 0.5) * 2 * halfSize,
         angle: Math.random() * Math.PI * 2,
-        health: 150,           // Same as regular players
-        shield: 25,            // Small shield advantage
+        health: 165,           // Slightly tougher
+        shield: 30,            // Small shield advantage
         weapon: 'pistol',      // Starts with pistol like everyone
         lastShot: 0,
         alive: true,
@@ -483,8 +483,8 @@ function updateClaudeNPC() {
         const dist = Math.sqrt(dx * dx + dy * dy);
         const angleToTarget = Math.atan2(dy, dx);
 
-        // Aim at target with moderate inaccuracy (60% accuracy)
-        const aimError = (Math.random() - 0.5) * 0.5;
+        // Aim at target with moderate inaccuracy (~65% accuracy)
+        const aimError = (Math.random() - 0.5) * 0.45;
         claude.angle = angleToTarget + aimError;
 
         // Movement based on AI state
@@ -505,8 +505,8 @@ function updateClaudeNPC() {
                 break;
         }
 
-        // Apply movement (slower than players)
-        const speed = claude.aiState === 'fleeing' ? 3.5 : 3;
+        // Apply movement (slightly slower than players)
+        const speed = claude.aiState === 'fleeing' ? 3.8 : 3.3;
         claude.x += Math.cos(claude.moveAngle) * speed;
         claude.y += Math.sin(claude.moveAngle) * speed;
 
@@ -516,16 +516,16 @@ function updateClaudeNPC() {
         claude.x = Math.max(center - arenaHalfSize, Math.min(center + arenaHalfSize, claude.x));
         claude.y = Math.max(center - arenaHalfSize, Math.min(center + arenaHalfSize, claude.y));
 
-        // Shooting - Claude shoots when in range (shorter range)
-        if (dist < 300) {
+        // Shooting - Claude shoots when in range
+        if (dist < 330) {
             const weapon = WEAPONS[claude.weapon] || WEAPONS.pistol;
-            // Slower fire rate (1.3x cooldown)
-            if (now - claude.lastShot >= weapon.fireRate * 1.3) {
+            // Slightly slower fire rate (1.2x cooldown)
+            if (now - claude.lastShot >= weapon.fireRate * 1.2) {
                 claude.lastShot = now;
 
                 // Fire bullets
                 for (let i = 0; i < weapon.bulletsPerShot; i++) {
-                    const spread = (Math.random() - 0.5) * (weapon.spread + 0.1);
+                    const spread = (Math.random() - 0.5) * (weapon.spread + 0.05);
                     const bulletAngle = claude.angle + spread;
                     const bullet = bulletPool.acquire(
                         CLAUDE_NPC_ID,
@@ -545,11 +545,11 @@ function updateClaudeNPC() {
         }
     } else {
         // No target - wander randomly
-        if (Math.random() < 0.015) {
+        if (Math.random() < 0.018) {
             claude.moveAngle = Math.random() * Math.PI * 2;
         }
-        claude.x += Math.cos(claude.moveAngle) * 1.5;
-        claude.y += Math.sin(claude.moveAngle) * 1.5;
+        claude.x += Math.cos(claude.moveAngle) * 1.7;
+        claude.y += Math.sin(claude.moveAngle) * 1.7;
 
         // Stay in arena
         const center = ARENA_SIZE / 2;
