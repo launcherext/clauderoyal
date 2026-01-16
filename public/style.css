@@ -1532,3 +1532,112 @@ body::before {
     border-radius: 50%;
     object-fit: cover;
 }
+
+/* ============================================================================
+   WAITING FOR PLAYERS OVERLAY
+   ============================================================================ */
+#waitingOverlay {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg-card);
+    backdrop-filter: blur(20px);
+    padding: 40px 60px;
+    border-radius: 24px;
+    border: 1px solid rgba(218, 119, 86, 0.3);
+    display: none;
+    z-index: 200;
+    text-align: center;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+    animation: waitingPulse 2s ease-in-out infinite;
+}
+
+#waitingOverlay.show {
+    display: block;
+}
+
+@keyframes waitingPulse {
+    0%, 100% {
+        border-color: rgba(218, 119, 86, 0.3);
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+    }
+    50% {
+        border-color: rgba(218, 119, 86, 0.6);
+        box-shadow: 0 8px 40px rgba(218, 119, 86, 0.2);
+    }
+}
+
+.waiting-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    animation: waitingIconSpin 3s ease-in-out infinite;
+}
+
+@keyframes waitingIconSpin {
+    0%, 100% {
+        transform: rotate(0deg);
+    }
+    25% {
+        transform: rotate(15deg);
+    }
+    75% {
+        transform: rotate(-15deg);
+    }
+}
+
+.waiting-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 12px;
+    letter-spacing: 2px;
+}
+
+.waiting-count {
+    font-size: 1.2rem;
+    color: var(--text);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.waiting-count span {
+    color: var(--primary);
+    font-weight: 700;
+}
+
+.waiting-current {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+}
+
+.waiting-current span {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.waiting-tip {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    font-style: italic;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    #waitingOverlay {
+        padding: 30px 40px;
+        width: 90%;
+        max-width: 320px;
+    }
+
+    .waiting-title {
+        font-size: 1.2rem;
+    }
+
+    .waiting-count {
+        font-size: 1rem;
+    }
+}

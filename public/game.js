@@ -651,7 +651,8 @@ let gameState = {
     leaderboard: [],
     recentWinners: [],
     playerCount: 0,
-    aliveCount: 0
+    aliveCount: 0,
+    minPlayers: 5       // Default, updated from server
 };
 
 let localPlayer = {
@@ -809,6 +810,11 @@ function handleMessage(data) {
                 WEAPONS = data.wp;
             }
 
+            // Store min players needed for waiting overlay
+            if (data.mp) {
+                gameState.minPlayers = data.mp;
+            }
+
             document.getElementById('menu').classList.add('hidden');
 
             if (data.lb) updateLeaderboardUI(data.lb);
@@ -936,6 +942,9 @@ function handleMessage(data) {
 
             // Update lobby sidebar
             updateLobby(data.nr || 0, data.lp || [], data.ph, data.pc, data.ac);
+
+            // Show/hide waiting for players overlay
+            updateWaitingOverlay(data.ph, data.pc, gameState.minPlayers || 5);
             break;
 
         case 'ack': // Input acknowledgment for prediction
@@ -1175,6 +1184,31 @@ function hideSpectatorOverlay() {
     const overlay = document.getElementById('spectatorOverlay');
     overlay.classList.remove('show');
     overlay.classList.remove('watching');
+}
+
+// ============================================================================
+// WAITING FOR PLAYERS OVERLAY
+// ============================================================================
+function updateWaitingOverlay(phase, playerCount, minPlayers) {
+    const overlay = document.getElementById('waitingOverlay');
+    if (!overlay) return;
+
+    const neededEl = document.getElementById('waitingNeeded');
+    const currentEl = document.getElementById('waitingCurrent');
+    const totalEl = document.getElementById('waitingTotal');
+
+    // Show overlay only during waiting phase when not enough players
+    if (phase === 'waiting' && playerCount < minPlayers) {
+        const needed = minPlayers - playerCount;
+
+        if (neededEl) neededEl.textContent = needed;
+        if (currentEl) currentEl.textContent = playerCount;
+        if (totalEl) totalEl.textContent = minPlayers;
+
+        overlay.classList.add('show');
+    } else {
+        overlay.classList.remove('show');
+    }
 }
 
 function updateSpectatorTargetUI() {

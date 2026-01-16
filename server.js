@@ -1152,7 +1152,8 @@ wss.on('connection', (ws) => {
                         rw: recentWinners.slice(0, 5),
                         ph: gameState.phase,
                         r: gameState.roundNumber,
-                        wp: WEAPONS  // Send weapon definitions to client
+                        wp: WEAPONS,  // Send weapon definitions to client
+                        mp: gameState.minPlayers  // Min players needed to start
                     });
 
                     if (!player.spectator) {
